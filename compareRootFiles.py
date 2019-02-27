@@ -21,8 +21,9 @@ args = parser.parse_args()
 print(args)
 
 ROOT.gROOT.SetBatch(True)
-ROOT.gStyle.SetOptStat(111111)
-ROOT.gStyle.SetTitleAlign(33)
+ROOT.gErrorIgnoreLevel=2000
+gStyle.SetOptStat(111111)
+gStyle.SetTitleAlign(33)
 colors = [ROOT.kBlack, ROOT.kRed, ROOT.kBlue, ROOT.kGreen+2, ROOT.kMagenta+2, ROOT.kOrange+2, ROOT.kPink+2, ROOT.kTeal+2, ROOT.kCyan+2, ROOT.kCyan+4, ROOT.kAzure, ROOT.kGray+3, ROOT.kOrange+7, ROOT.kGreen+4]
 
 output_path = args.output
@@ -95,8 +96,12 @@ for object_name in object_names:
   
   files[0].cd(directory)
   ref_hist=gDirectory.Get(object_name).Clone()
-  #ref_hist.Sumw2()
   title = ref_hist.GetName()
+  if ref_hist.InheritsFrom("TProfile"):
+    ref_hist=ref_hist.ProjectionX()
+  elif ref_hist.InheritsFrom("TProfile2D"):
+    ref_hist=ref_hist.ProjectionXY()
+  #ref_hist.Sumw2()
   c = ROOT.TCanvas('c_' + title, title)
   c.cd()
   
@@ -119,18 +124,19 @@ for object_name in object_names:
       ROOT.gPad.SetTopMargin(0.01)
       
       hist=gDirectory.Get(object_name)
-      hist.SetName(object_name + '_(%d)' % i)
+      hist.SetName(object_name + '_%d' % i)
       hist.SetTitle(labels[i])
       
       if args.rescale:
-        scale_factor = 1.0*ref_hist.GetEntries()/hist.GetEntries() if hist.GetEntries() != 0 else 1
+        #scale_factor = 1.0*ref_hist.GetEntries()/hist.GetEntries() if hist.GetEntries() != 0 else 1
+        scale_factor = 1.0*ref_hist.Integral("width")/hist.Integral("width") if hist.Integral("width") != 0 else 1
         hist.Scale(scale_factor)
         
       hist.Draw("colz")
       ROOT.gPad.Modified()
       ROOT.gPad.Update()
       stats = ROOT.gPad.GetPrimitive('stats')
-      stats.SetName('stats_(%d)' % i)
+      stats.SetName('stats_%d' % i)
       stats.SetTextColor(colors [i])
       stats.SetX1NDC(.7)
       stats.SetX2NDC(.9)
@@ -152,7 +158,9 @@ for object_name in object_names:
     for label in labels:
       c1.cd(i + 1)
       ROOT.gPad.SetLogz(0)
-      hist=ROOT.gPad.GetPrimitive(object_name + '_(%d)' % i)
+      hist=ROOT.gPad.GetPrimitive(object_name + '_%d' % i)
+      if hist.InheritsFrom("TProfile2D"):
+        hist=hist.ProjectionXY()
       #hist.Sumw2()
       hist.Divide(ref_hist)
       i += 1
@@ -167,20 +175,21 @@ for object_name in object_names:
     for file in files:
       file.cd(directory)
       hist=gDirectory.Get(object_name)
-      hist.SetName(object_name + '_(%d)' % i)
+      hist.SetName(object_name + '_%d' % i)
       hist.SetTitle(labels[i])
           
       if args.rescale:
-        scale_factor = 1.0*ref_hist.GetEntries()/hist.GetEntries() if hist.GetEntries() != 0 else 1
-        print ref_hist.GetEntries(), hist.GetEntries(), scale_factor
+        #scale_factor = 1.0*ref_hist.GetEntries()/hist.GetEntries() if hist.GetEntries() != 0 else 1
+        scale_factor = 1.0*ref_hist.Integral("width")/hist.Integral("width") if hist.Integral("width") != 0 else 1
         hist.Scale(scale_factor)
       hist.SetLineWidth(2)
       hist.SetLineColor(colors[i])
+      hist.SetMarkerColor(colors[i])
       hist.Draw()
       ROOT.gPad.Modified()
       ROOT.gPad.Update()
       stats=hist.GetListOfFunctions().FindObject('stats')
-      stats.SetName('stats_(%d)' % i)
+      stats.SetName('stats_%d' % i)
       stats.SetTextColor(colors[i])
       stats.SetX1NDC(0.8)
       stats.SetX2NDC(1.0)
@@ -203,10 +212,15 @@ for object_name in object_names:
     c.SetName(c.GetName() + "_ratio")
     stack = ROOT.THStack(stack.GetName() + "_ratio", stack.GetTitle() + ": ratio to " + labels [0]);
     for hist in hists:
+      if hist.InheritsFrom("TProfile"):
+        hist=hist.ProjectionX()
       #hist.Sumw2()
       hist.Divide(ref_hist)
-      stack.Add(hist)
+      stack.Add(hist)        
     stack.Draw("nostack")
+    stack.GetHistogram().GetYaxis().SetRangeUser(0.,4.)
+    gPad.Modified()
+    gPad.Update()
     #ROOT.gPad.BuildLegend(0.8,0.0,1.0,0.9-y_offset)
     c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
     c.Write()
