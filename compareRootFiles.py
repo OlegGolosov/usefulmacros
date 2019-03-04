@@ -9,6 +9,22 @@ from ROOT import gStyle
 from ROOT import gDirectory
 from ROOT import gPad
 
+max_depth = 2
+
+def BuildObjectList (directory):
+  depth = 1
+  global max_depth
+  directory_path=directory.GetPath().rsplit(':', 1)[-1]
+  object_names = []
+  for key in directory.GetListOfKeys():
+    object_name=key.GetName()
+    object=directory.Get(object_name)
+    if type(object).__name__.startswith("TH") or type(object).__name__.endswith("Graph"):
+      object_names.append(directory_path + '/' + object_name)
+    elif 'TDirectoryFile' in type(object).__name__ and depth <= max_depth: 
+      object_names.extend (BuildObjectList (object))
+  return object_names
+
 parser = argparse.ArgumentParser(description='Compare root files')
 
 parser.add_argument('-i', '--input', dest='input', help='Input root files', nargs='+', required=True)
@@ -16,6 +32,9 @@ parser.add_argument('-l', '--labels', dest='labels', help='Labels for each file'
 parser.add_argument('-o', '--output', dest='output', help='Output file', default='comp.root')
 parser.add_argument('-d', '--directory', dest='directory', help='Directory to compare', required=False)
 parser.add_argument('--rescale', dest='rescale', help='Rescale histograms', required=False, type=bool, default=True)
+parser.add_argument('-r', '--ratio', dest='plot_ratio', help='Plot histogram ratio', required=False, type=bool, default=False)
+parser.add_argument('--root', dest='write_to_root', help='Write output to ROOT file', required=False, type=bool, default=False)
+parser.add_argument('--pdf', dest='write_to_pdf', help='Write output to PDF file', required=False, type=bool, default=True)
 
 args = parser.parse_args()
 print(args)
@@ -33,11 +52,11 @@ else:
   directory = ''
 
 files = []
+dirs = []
 for file_path in args.input:
-  file = ROOT.TFile.Open (file_path)
-  files.append (file)
+  files.append(ROOT.TFile.Open(file_path))
+  dirs.append(files[-1].GetDirectory (directory))
 
-i = 0
 labels = []
 if args.labels is not None:
   for label in args.labels:
@@ -47,8 +66,8 @@ if args.labels is not None:
     labels.append(label)
   if len(args.labels) < len(args.input):
     print 'Warning! Number of labels provided is less than number of input files!'
-  i = len(labels)
-    
+
+i = len(labels)    
 while i < len (args.input):
   label = args.input[i]
   if '/' in label: 
@@ -58,24 +77,15 @@ while i < len (args.input):
   labels.append(label)
   i+=1  
   
-output_file = ROOT.TFile.Open(output_path,"recreate")
+if args.write_to_root: 
+  output_file = ROOT.TFile.Open(output_path,"recreate") 
 output_path_pdf=output_path.replace(".root",".pdf") 
-
-object_names = []
-files[0].cd(directory)
-for key in gDirectory.GetListOfKeys():
-  object_name=key.GetName()
-  hist=gDirectory.Get(object_name)
-  if hist.InheritsFrom("TH1") or hist.InheritsFrom("TGraph") or hist.InheritsFrom("TMultiGraph"):
-    object_names.append(object_name)
-  else:
-    print 'Skipping non-histogram object', object_name
-for file in files:
-  file.cd(directory)
-  object_names_temp = []
-  for key in gDirectory.GetListOfKeys():
-    object_names_temp.append(key.GetName())
-  object_names = list(set(object_names).intersection(object_names_temp))
+ 
+object_names = BuildObjectList (dirs[0])
+#print object_names
+for dir in dirs:
+  object_names = sorted (list(set(object_names).intersection(BuildObjectList (dir))), key = object_names.index)
+  print object_names
 
 c = ROOT.TCanvas('c_first', 'c_first')
 
@@ -92,11 +102,11 @@ for label in labels:
 c.Print(output_path_pdf + '(','Title:Title')
     
 for object_name in object_names:
-  print(object_name)
+  print object_name
   
-  files[0].cd(directory)
-  ref_hist=gDirectory.Get(object_name).Clone()
-  title = ref_hist.GetName()
+  ref_hist=files[0].Get(object_name).Clone()
+  #title = ref_hist.GetName()
+  title = object_name
   if ref_hist.InheritsFrom("TProfile"):
     ref_hist=ref_hist.ProjectionX()
   elif ref_hist.InheritsFrom("TProfile2D"):
@@ -117,13 +127,12 @@ for object_name in object_names:
     c1.Divide(npadsx, npadsy)
     i = 0
     for file in files:
-      file.cd(directory)
       c1.cd(i+1)
       ROOT.gPad.SetLogz()
       ROOT.gPad.SetLeftMargin(0.15)
       ROOT.gPad.SetTopMargin(0.01)
       
-      hist=gDirectory.Get(object_name)
+      hist=file.Get(object_name)
       hist.SetName(object_name + '_%d' % i)
       hist.SetTitle(labels[i])
       
@@ -147,25 +156,29 @@ for object_name in object_names:
       hist.SetStats(0)
       i += 1
     
-    output_file.cd()
-    c.Print(output_path_pdf,'Title:'+ title.replace('tex','te'))
-    c.Write()
-
-    c.SetName(c.GetName() + "_ratio")
-    c.cd()
-    text.DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0])
-    i = 0
-    for label in labels:
-      c1.cd(i + 1)
-      ROOT.gPad.SetLogz(0)
-      hist=ROOT.gPad.GetPrimitive(object_name + '_%d' % i)
-      if hist.InheritsFrom("TProfile2D"):
-        hist=hist.ProjectionXY()
-      #hist.Sumw2()
-      hist.Divide(ref_hist)
-      i += 1
-    c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
-    c.Write()
+    if args.write_to_pdf: 
+        c.Print(output_path_pdf,'Title:'+ title.replace('tex','te'))
+    if args.write_to_root: 
+      output_file.cd()
+      c.Write()
+    if args.plot_ratio:
+      c.SetName(c.GetName() + "_ratio")
+      c.cd()
+      text.DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0])
+      i = 0
+      for label in labels:
+        c1.cd(i + 1)
+        ROOT.gPad.SetLogz(0)
+        hist=ROOT.gPad.GetPrimitive(object_name + '_%d' % i)
+        if hist.InheritsFrom("TProfile2D"):
+          hist=hist.ProjectionXY()
+        #hist.Sumw2()
+        hist.Divide(ref_hist)
+        hist.GetZaxis().SetRangeUser(0,4)
+        i += 1
+      if args.write_to_pdf: 
+        c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
+      if args.write_to_root: c.Write()
 
   elif (ref_hist.InheritsFrom("TH1")):
     ROOT.gStyle.SetOptTitle(1)
@@ -205,25 +218,31 @@ for object_name in object_names:
     ROOT.gPad.SetRightMargin(0.2)
     stack.Draw("nostack")
     #ROOT.gPad.BuildLegend(0.8,0.0,1.0,0.9-y_offset)
-    output_file.cd()
-    c.Print(output_path_pdf,'Title:'+ title.replace('tex','te'))
-    c.Write()
+    if args.write_to_pdf: 
+        c.Print(output_path_pdf,'Title:'+ title.replace('tex','te'))
+    if args.write_to_root: 
+      output_file.cd()
+      c.Write()
     
-    c.SetName(c.GetName() + "_ratio")
-    stack = ROOT.THStack(stack.GetName() + "_ratio", stack.GetTitle() + ": ratio to " + labels [0]);
-    for hist in hists:
-      if hist.InheritsFrom("TProfile"):
-        hist=hist.ProjectionX()
-      #hist.Sumw2()
-      hist.Divide(ref_hist)
-      stack.Add(hist)        
-    stack.Draw("nostack")
-    stack.GetHistogram().GetYaxis().SetRangeUser(0.,4.)
-    gPad.Modified()
-    gPad.Update()
-    #ROOT.gPad.BuildLegend(0.8,0.0,1.0,0.9-y_offset)
-    c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
-    c.Write()
+    if args.plot_ratio:
+      c.SetName(c.GetName() + "_ratio")
+      stack = ROOT.THStack(stack.GetName() + "_ratio", stack.GetTitle() + ": ratio to " + labels [0]);
+      for hist in hists:
+        if hist.InheritsFrom("TProfile"):
+          hist=hist.ProjectionX()
+        #hist.Sumw2()
+        hist.Divide(ref_hist)
+        hist.GetYaxis().SetRangeUser(0.,4.)
+        stack.Add(hist)        
+      stack.Draw("nostack")
+      stack.GetHistogram().GetYaxis().SetRangeUser(0.,4.)
+      gPad.Modified()
+      gPad.Update()
+      #ROOT.gPad.BuildLegend(0.8,0.0,1.0,0.9-y_offset)
+      if args.write_to_pdf: 
+        c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
+      if args.write_to_root: 
+        c.Write()
         
 c = ROOT.TCanvas('c_last', 'The end!')
 text.DrawLatex(0.5, 0.6, 'The end! ')
