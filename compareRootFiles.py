@@ -75,17 +75,18 @@ def PlotTH1 (object_name):
     ROOT.gPad.Modified()
     ROOT.gPad.Update()
     stats=hist.GetListOfFunctions().FindObject('stats')
-    stats.SetName('stats_%d' % i)
-    stats.SetTextColor(colors[i])
-    stats.SetX1NDC(0.8)
-    stats.SetX2NDC(1.0)
-    y_offset = 0.1 * i
-    stats.SetY1NDC(0.9-y_offset)
-    stats.SetY2NDC(1.0-y_offset)
-    statTitle = stats.GetLineWith(object_name)
-    statTitle.SetText(0,0,labels [i])
-    stack.Add(hist)
-    hists.append(hist)
+    if (stats):
+      stats.SetName('stats_%d' % i)
+      stats.SetTextColor(colors[i])
+      stats.SetX1NDC(0.8)
+      stats.SetX2NDC(1.0)
+      y_offset = 0.1 * i
+      stats.SetY1NDC(0.9-y_offset)
+      stats.SetY2NDC(1.0-y_offset)
+      statTitle = stats.GetLineWith(object_name)
+      statTitle.SetText(0,0,labels [i])
+      stack.Add(hist)
+      hists.append(hist)
     i+=1
           
   ROOT.gPad.SetRightMargin(0.2)
@@ -116,6 +117,11 @@ def PlotTH1 (object_name):
       c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
     if args.write_to_root: 
       c.Write()
+  
+  stack.Delete()
+  ref_hist.Delete()
+  for hist in hists:
+    hist.Delete()
 
 def PlotTH2 (object_name):
   global colors
@@ -145,6 +151,7 @@ def PlotTH2 (object_name):
   npadsy = int(math.ceil (1. * npads / npadsx))
   c1.Divide(npadsx, npadsy)
   i = 0
+  hists = []
   for file in files:
     c1.cd(i+1)
     ROOT.gPad.SetLogz()
@@ -164,15 +171,17 @@ def PlotTH2 (object_name):
     ROOT.gPad.Modified()
     ROOT.gPad.Update()
     stats = ROOT.gPad.GetPrimitive('stats')
-    stats.SetName('stats_%d' % i)
-    stats.SetTextColor(colors [i])
-    stats.SetX1NDC(.7)
-    stats.SetX2NDC(.9)
-    stats.SetY1NDC(.7)
-    stats.SetY2NDC(.99)
-    statTitle = stats.GetLineWith(hist.GetName())
-    statTitle.SetText(0,0,hist.GetTitle())
-    hist.SetStats(0)
+    if (stats):
+      stats.SetName('stats_%d' % i)
+      stats.SetTextColor(colors [i])
+      stats.SetX1NDC(.7)
+      stats.SetX2NDC(.9)
+      stats.SetY1NDC(.7)
+      stats.SetY2NDC(.99)
+      statTitle = stats.GetLineWith(hist.GetName())
+      statTitle.SetText(0,0,hist.GetTitle())
+      hist.SetStats(0)
+      hists.append(hist)
     i += 1
   
   if args.write_to_pdf: 
@@ -198,7 +207,10 @@ def PlotTH2 (object_name):
     if args.write_to_pdf: 
       c.Print(output_path_pdf,'Title:'+ title.replace('tex','te') + "_ratio")
     if args.write_to_root: c.Write()
-
+        
+  ref_hist.Delete()
+  for hist in hists:
+    hist.Delete()
 
 print(args)
 
@@ -240,6 +252,7 @@ if args.write_to_root:
 object_names = BuildObjectList (dirs[0])
 for dir in dirs:
   object_names = sorted (list(set(object_names).intersection(BuildObjectList (dir))), key = object_names.index)
+  dir.Delete()
 #print object_names
 
 c = ROOT.TCanvas('c_first', 'c_first')
@@ -269,7 +282,8 @@ for object_name in object_names:
   elif (object.InheritsFrom("TH1")):
     PlotTH1 (object_name)
     
-        
+  object.Delete()
+  
 c = ROOT.TCanvas('c_last', 'The end!')
 text.DrawLatex(0.5, 0.6, 'The end! ')
 
