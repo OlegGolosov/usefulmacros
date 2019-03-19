@@ -62,7 +62,7 @@ bool DivideMultiGraphs (TMultiGraph *mg, TMultiGraph *mg_ref);
 
 int main (int argc, char* argv[])
 {
-  gROOT -> SetBatch (true);
+//  gROOT -> SetBatch (true);
   gErrorIgnoreLevel = 2000;
   gStyle -> SetOptStat (111111);
 //  gStyle -> SetTitleAlign (33);
@@ -108,7 +108,7 @@ int main (int argc, char* argv[])
     cout << object_name << endl;
     
     if (! files[0] -> Get(object_name)) cout << "BOO!!!";
-    TObject *object = files [0] -> Get(object_name) -> Clone();
+    TObject *object = files [0] -> Get(object_name);
     TString className = object -> ClassName();
     
     if (className.Contains ("TH1"))
@@ -122,8 +122,9 @@ int main (int argc, char* argv[])
       
     else if (className.Contains ("TMultiGraph"))
       PlotMultiGraph (object_name);
-      
-    delete object;
+    
+    else 
+      delete object;
   } 
   c -> SetName ("c_last");
   c -> SetTitle ("The end!");
@@ -214,7 +215,7 @@ void BuildObjectList (TDirectory *folder, int depth)
 
 void PlotTH1 (TString object_name)
 {
-  auto ref_obj = files[0]->Get(object_name)->Clone();
+  auto ref_obj = files[0]->Get(object_name)->Clone("htemp");
   TProfile *ref_P1D = nullptr;
   TH1 *ref_hist = nullptr;
   TH1 *hist = nullptr;
@@ -233,7 +234,6 @@ void PlotTH1 (TString object_name)
   TString title = object_name;
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
-//  gStyle -> SetOptTitle(1);
   auto stack = new THStack ("st_" + object_name, title);
   
   for (int i = 0; i < files.size(); i++)
@@ -246,7 +246,7 @@ void PlotTH1 (TString object_name)
     if (rescale)
     {
       float scale_factor;
-      if (hist -> GetEntries() != 0) 
+      if (hist -> GetSumOfWeights() != 0) 
 //        scale_factor = 1.0 * ref_hist -> GetEntries() / hist -> GetEntries ();
         scale_factor = 1.0 * ref_hist -> Integral ("width") / hist -> Integral ("width");
       else scale_factor = 1.0;
@@ -292,12 +292,12 @@ void PlotTH1 (TString object_name)
     {
       //hist -> Sumw2()
       hist -> Divide (ref_hist);
-      hist -> GetYaxis () -> SetRangeUser (-4. ,4.);
+      hist -> GetYaxis() -> SetRangeUser (0., 4.);
     }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","te") + "_ratio");
     if (save_root) 
-      c -> Write ();
+      c -> Write();
     delete stack;
   }  
   delete ref_hist;
@@ -308,7 +308,7 @@ void PlotTH1 (TString object_name)
 
 void PlotGraph (TString object_name)
 {
-  auto ref_graph = (TGraph*) files[0]->Get(object_name)->Clone();
+  auto ref_graph = (TGraph*) files[0]->Get(object_name)->Clone("htemp");
   
   TString title = object_name;
   TCanvas *c = new TCanvas ("c_" + title, title);
@@ -350,7 +350,7 @@ void PlotGraph (TString object_name)
       if (! DivideGraphs ((TGraph*) graph, ref_graph))
         break;
     }
-//    
+    
     mg -> SetMinimum (-4.);
     mg -> SetMaximum (4.);
     if (save_pdf) 
@@ -370,7 +370,7 @@ void PlotTH2 (TString object_name)
   text -> SetTextFont(42);
   vector <TH2*> hists;
   
-  auto ref_obj = files [0] -> Get (object_name) -> Clone();
+  auto ref_obj = files [0] -> Get (object_name) -> Clone("htemp");
   TProfile2D *ref_P2D = nullptr;
   TH2 *ref_hist = nullptr;
   TH2 *hist = nullptr;
@@ -411,7 +411,7 @@ void PlotTH2 (TString object_name)
     if (rescale)
     {
       float scale_factor;
-      if (hist -> GetEntries() != 0) 
+      if (hist -> GetSumOfWeights() != 0) 
 //        scale_factor = 1.0 * ref_hist -> GetEntries() / hist -> GetEntries ();
         scale_factor = 1.0 * ref_hist -> Integral ("width") / hist -> Integral ("width");
       else scale_factor = 1.0;
@@ -456,7 +456,7 @@ void PlotTH2 (TString object_name)
       if (!hist) continue;
 //      hist -> Sumw2()
       hist -> Divide (ref_hist);
-      hist -> GetZaxis() -> SetRangeUser (-4, 4);
+      hist -> GetZaxis() -> SetRangeUser (0., 4.);
     }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "te") + "_ratio");
@@ -480,7 +480,7 @@ void PlotMultiGraph (TString object_name)
   vector <TMultiGraph*> multiGraphs;
   
   TMultiGraph *mg;
-  auto mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone();
+  auto mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
   
   TLegend *leg = new TLegend (0.,0.,1.,1.);
