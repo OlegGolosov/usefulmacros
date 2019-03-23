@@ -67,6 +67,7 @@ int main (int argc, char* argv[])
   gStyle -> SetOptStat (111111);
 //  gStyle -> SetTitleAlign (33);
   gStyle -> SetLegendBorderSize (0);
+  gStyle->SetStatStyle (0);
 
   parseArgs (argc, argv);
   
@@ -428,7 +429,7 @@ void PlotTH2 (TString object_name)
       stats -> SetX1NDC (.7);
       stats -> SetX2NDC (.9);
       stats -> SetY1NDC (.7);
-      stats -> SetY2NDC (.99);
+      stats -> SetY2NDC (.94);
       TText *statTitle = stats -> GetLineWith (hist -> GetName());
       statTitle -> SetText (0, 0, hist -> GetTitle());
       hist -> SetStats (0);
