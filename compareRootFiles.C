@@ -5,6 +5,7 @@
 #include <TFile.h>
 #include <TDirectory.h>
 #include <TROOT.h>
+#include <TSystem.h>
 #include <TKey.h>
 #include <TList.h>
 #include <TLatex.h>
@@ -35,7 +36,8 @@ int maxDepth = 10;
 bool rescale = true;
 bool plot_ratio = false;
 bool save_root = true;
-bool save_pdf = true;
+bool save_png = true;
+bool save_pdf = false;
 vector <TFile*> files;
 vector <TDirectory*> dirs;
 vector <TString> object_names;
@@ -62,7 +64,6 @@ bool DivideMultiGraphs (TMultiGraph *mg, TMultiGraph *mg_ref);
 
 int main (int argc, char* argv[])
 {
-//  gROOT -> SetBatch (true);
   gErrorIgnoreLevel = 2000;
   gStyle -> SetOptStat (111111);
 //  gStyle -> SetTitleAlign (33);
@@ -71,6 +72,9 @@ int main (int argc, char* argv[])
 
   parseArgs (argc, argv);
   
+  if (save_png)
+    gSystem -> Exec("mkdir -p " + outputPath); 
+		
   if (save_root) 
     output_file = new TFile (outputPath + ".root", "recreate");
   
@@ -108,15 +112,14 @@ int main (int argc, char* argv[])
       object_name.Remove (0,1);
     cout << object_name << endl;
     
-    if (! files[0] -> Get(object_name)) cout << "BOO!!!";
     TObject *object = files [0] -> Get(object_name);
     TString className = object -> ClassName();
-    
-    if (className.Contains ("TH1"))
-      PlotTH1 (object_name);      
       
-    else if (className.Contains ("TH2"))
+    if (className.Contains ("TH2") || className.Contains ("TProfile2"))
       PlotTH2 (object_name);
+    
+    else if (className.Contains ("TH1") || className.Contains ("TProfile"))
+      PlotTH1 (object_name);      
       
     else if (className.Contains ("TGraph"))
       PlotGraph (object_name);
@@ -149,8 +152,9 @@ bool parseArgs (int argc, char* argv[])
     ("depth,d", value<int>()->default_value(10), "Maximum depth of folder search")
     ("ratio,r", value<bool>()->implicit_value(true)->default_value(false), "Plot histogram ratio")
     ("no-rescale", value<bool>()->implicit_value(false)->default_value(true), "Rescale histograms")
-    ("no-root", value<bool>()->implicit_value(false)->default_value(true), "Write output to ROOT file")
-    ("no-pdf,p", value<bool>()->implicit_value(false)->default_value(true), "Write output to PDF file")
+    ("pdf,p", value<bool>()->implicit_value(true)->default_value(false), "Write output to PDF file")
+    ("no-root", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to ROOT file")
+    ("no-png", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to png files")
   ;
   
   variables_map args;
@@ -168,8 +172,9 @@ bool parseArgs (int argc, char* argv[])
   maxDepth = args ["depth"].as <int> ();
   rescale = args ["no-rescale"].as <bool> ();
   plot_ratio = args ["ratio"].as <bool> ();
+  save_pdf = args ["pdf"].as <bool> ();
   save_root = args ["no-root"].as <bool> ();
-  save_pdf = args ["no-pdf"].as <bool> ();
+  save_png = args ["no-png"].as <bool> ();
   
   if (args.count ("labels")) labels = args ["labels"].as <vector <TString> > (); 
   if (labels.size () > 0 && labels.size () != inputFileNames.size ())
@@ -279,12 +284,18 @@ void PlotTH1 (TString object_name)
           
   gPad -> SetRightMargin (0.2);
   stack -> Draw ("nostack");
+	stack -> GetXaxis() -> SetTitle (ref_hist -> GetXaxis () -> GetTitle());	
+	stack -> GetYaxis() -> SetTitle (ref_hist -> GetYaxis () -> GetTitle());
   if (save_pdf) 
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "te"));
-  if (save_root)  
+  if (save_png) 
+    c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_root)
+	{
     output_file -> cd();
-    c -> Write();
-  
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+	
   if (plot_ratio)
   {
     c -> SetName (Form ("%s_ratio", c -> GetName()));
@@ -297,8 +308,10 @@ void PlotTH1 (TString object_name)
     }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","te") + "_ratio");
+		if (save_png) 
+			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
     if (save_root) 
-      c -> Write();
+      c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
     delete stack;
   }  
   delete ref_hist;
@@ -336,10 +349,14 @@ void PlotGraph (TString object_name)
   gPad -> BuildLegend (0.81, 0.0, 1.0, 1.0);
   if (save_pdf) 
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "te"));
-  if (save_root)  
+	if (save_png) 
+		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_root)
+	{  
     output_file -> cd();
-    c -> Write();
-  
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+	
   if (plot_ratio)
   {
     mg -> SetName ("mg_" + object_name + "_ratio");
@@ -356,8 +373,10 @@ void PlotGraph (TString object_name)
     mg -> SetMaximum (4.);
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","te") + "_ratio");
+		if (save_png) 
+			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
     if (save_root) 
-      c -> Write ();
+      c -> Write (((TString)c->GetName()).ReplaceAll ("/", "_"));
     delete mg;
   }
   delete c;
@@ -439,16 +458,19 @@ void PlotTH2 (TString object_name)
   
   if (save_pdf)
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","te"));
+	if (save_png) 
+		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
   if (save_root)
   { 
     output_file -> cd();
-    c -> Write();
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
   if (plot_ratio)
   {
     c -> SetName (Form("%s_ratio", c -> GetName()));
+    c -> SetTitle (Form ("%s: ratio to %s", c -> GetTitle(), labels [0].Data()));
     c -> cd();
-    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+//    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
     for (int i = 0; i < labels.size(); i++)
     {
       c1 -> cd (i + 1);
@@ -459,10 +481,13 @@ void PlotTH2 (TString object_name)
       hist -> Divide (ref_hist);
       hist -> GetZaxis() -> SetRangeUser (0., 4.);
     }
+		gPad -> Update();
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "te") + "_ratio");
+		if (save_png) 
+			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
     if (save_root)
-      c -> Write();
+      c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
         
   delete ref_hist;
@@ -525,10 +550,12 @@ void PlotMultiGraph (TString object_name)
   
   if (save_pdf)
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","te"));
+	if (save_png) 
+		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
   if (save_root)
   { 
     output_file -> cd();
-    c -> Write();
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
   if (plot_ratio)
   {
@@ -545,8 +572,10 @@ void PlotMultiGraph (TString object_name)
     }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "te") + "_ratio");
+		if (save_png) 
+			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
     if (save_root)
-      c -> Write();
+      c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
         
   delete mg_ref;
