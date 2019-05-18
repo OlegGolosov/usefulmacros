@@ -605,14 +605,23 @@ void PlotMultiGraph (TString object_name)
     c1 -> cd (i + 1);
     gPad -> SetLeftMargin (0.1);
     gPad -> SetRightMargin (0.);
-    gPad -> SetTopMargin (0.06);
+    gPad -> SetTopMargin (0.1);
 
     mg = (TMultiGraph*) files [i] -> Get (object_name);
     if (!mg) continue;
     TString xAxisTitle = mg -> GetXaxis() -> GetTitle();
-    mg -> Draw ("apl");
-    mg -> SetName (object_name + Form ("_%d", i));
     mg -> SetTitle (labels [i]);
+    mg -> Draw ("apl");
+    gPad -> Update();
+    TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
+    if (p) 
+    {
+      p -> Clear();
+      p -> InsertLine ();
+      p -> InsertText (labels [i]);
+      p -> SetTextSize (0.05);
+    }
+    mg -> SetName (object_name + Form ("_%d", i));
     mg -> GetXaxis() -> SetTitle(xAxisTitle);
     if (xRangeSet) mg -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) mg -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
