@@ -53,6 +53,7 @@ bool zRangeSet = false;
 vector <float> xRange;
 vector <float> yRange;
 vector <float> zRange;
+bool logX, logY, logZ;
 TFile *output_file;
 
 inline istream& operator>>(istream& in, TString &data)
@@ -68,9 +69,11 @@ void BuildObjectList (TDirectory *folder, int depth = 0);
 void PlotTH1 (TString object_name);
 void PlotGraph (TString object_name);
 void PlotMultiGraph (TString object_name);
+void PlotTHStack (TString object_name);
 void PlotTH2 (TString object_name);
 bool DivideGraphs (TGraph *graph, TGraph *graph_ref);
 bool DivideMultiGraphs (TMultiGraph *mg, TMultiGraph *mg_ref);
+bool DivideTHStacks (THStack* hs, THStack *hs_ref);
 
 int main (int argc, char* argv[])
 {
@@ -136,6 +139,9 @@ int main (int argc, char* argv[])
       
     else if (className.Contains ("TMultiGraph"))
       PlotMultiGraph (object_name);
+      
+    else if (className.Contains ("THStack"))
+      PlotTHStack (object_name);
     
     else 
       delete object;
@@ -165,6 +171,9 @@ bool parseArgs (int argc, char* argv[])
     ("xrange,x", value< vector<float> >()->multitoken(),"X axis range") 
     ("yrange,y", value< vector<float> >()->multitoken(),"Y axis range")
     ("zrange,z", value< vector<float> >()->multitoken(),"Z axis range")
+    ("logx", value<bool>()->implicit_value(true)->default_value(false), "SetLogX()")
+    ("logy", value<bool>()->implicit_value(true)->default_value(false), "SetLogY()")
+    ("logz", value<bool>()->implicit_value(false)->default_value(true), "SetLogZ(0)")
     ("no-rescale", value<bool>()->implicit_value(false)->default_value(true), "Do not rescale histograms")
     ("save-empty", value<bool>()->implicit_value(true)->default_value(false), "Save empty and zero histograms")
     ("no-pdf", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to PDF file")
@@ -191,6 +200,9 @@ bool parseArgs (int argc, char* argv[])
   save_pdf = args ["no-pdf"].as <bool> ();
   save_root = args ["no-root"].as <bool> ();
   save_png = args ["png"].as <bool> ();
+  logX = args ["logx"].as <bool> ();
+  logY = args ["logy"].as <bool> ();
+  logZ = args ["logz"].as <bool> ();
   
   if (args.count ("xrange")) xRange = args ["xrange"].as <vector <float> > ();
   if (args.count ("yrange")) yRange = args ["yrange"].as <vector <float> > ();
@@ -334,10 +346,14 @@ void PlotTH1 (TString object_name)
   {
     gPad -> SetRightMargin (0.2);
     stack -> Draw ("nostack");
+//    stack -> Draw ("histe nostack");
+//    gPad -> BuildLegend (0.81, 0.0, 1.0, 1.0);
     stack -> GetXaxis() -> SetTitle (ref_hist -> GetXaxis () -> GetTitle());	
     stack -> GetYaxis() -> SetTitle (ref_hist -> GetYaxis () -> GetTitle());
     if (xRangeSet) stack -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) stack -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    c -> SetLogx (logX);
+    c -> SetLogy (logY);
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx"));
     if (save_png) 
@@ -402,6 +418,8 @@ void PlotGraph (TString object_name)
   if (xRangeSet) mg -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
   if (yRangeSet) mg -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
   gPad -> BuildLegend (0.81, 0.0, 1.0, 1.0);
+  c -> SetLogx (logX);
+  c -> SetLogy (logY);
   if (save_pdf) 
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx"));
 	if (save_png) 
@@ -480,6 +498,9 @@ void PlotTH2 (TString object_name)
     gPad -> SetLogz ();
     gPad -> SetLeftMargin (0.15);
     gPad -> SetTopMargin (0.06);
+    gPad -> SetLogx (logX);
+    gPad -> SetLogy (logY);
+    gPad -> SetLogz (logZ);
 
     hist = (TH2*) files [i] -> Get (object_name);
     if (!hist) continue;
@@ -606,10 +627,13 @@ void PlotMultiGraph (TString object_name)
     gPad -> SetLeftMargin (0.1);
     gPad -> SetRightMargin (0.);
     gPad -> SetTopMargin (0.1);
+    gPad -> SetLogx (logX);
+    gPad -> SetLogy (logY);
 
     mg = (TMultiGraph*) files [i] -> Get (object_name);
     if (!mg) continue;
     TString xAxisTitle = mg -> GetXaxis() -> GetTitle();
+    TString yAxisTitle = mg -> GetYaxis() -> GetTitle();
     mg -> SetTitle (labels [i]);
     mg -> Draw ("apl");
     gPad -> Update();
@@ -623,6 +647,7 @@ void PlotMultiGraph (TString object_name)
     }
     mg -> SetName (object_name + Form ("_%d", i));
     mg -> GetXaxis() -> SetTitle(xAxisTitle);
+    mg -> GetYaxis() -> SetTitle(yAxisTitle);
     if (xRangeSet) mg -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) mg -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
     multiGraphs.push_back (mg);
@@ -661,6 +686,110 @@ void PlotMultiGraph (TString object_name)
   delete mg_ref;
   for (auto mg : multiGraphs)
     delete mg;
+  delete c0;
+  delete c1;
+  delete c;
+}
+
+void PlotTHStack (TString object_name)
+{
+  TLatex *text = new TLatex();
+  text -> SetNDC();
+  text -> SetTextSize (0.055);
+  text -> SetTextFont (42);
+  vector <THStack*> stacks;
+  
+  THStack *hs;
+  auto hs_ref = (THStack*) files [0] -> Get (object_name) -> Clone("htemp");
+  TString title = object_name;
+  
+  TLegend *leg = new TLegend (0.,0.,1.,1.);
+  leg -> SetTextSize(0.1);
+  TList *hslist = hs_ref -> GetHists();
+  for (auto object : *hslist)
+    leg -> AddEntry (object, object -> GetTitle(),"pl");
+  
+  TCanvas *c = new TCanvas ("c_" + title, title);
+  c -> cd();
+  text -> DrawLatex (0.1, 0.95, title);
+  
+  TPad *c0 = new TPad ("c0", "c0", 0.81, 0., 1., 0.94);
+  c0 -> Draw ();
+  c0 -> cd ();
+  leg -> Draw ();
+  
+  c -> cd();
+  TPad *c1 = new TPad ("c1", "c1", 0., 0., .8, 0.94);
+  c1 -> Draw();
+  c1 -> cd();
+  int npads = labels.size();
+  int npadsx = int (ceil (sqrt (npads)));
+  int npadsy = int (ceil (1. * npads / npadsx));
+  c1 -> Divide (npadsx, npadsy);
+  
+  for (int i = 0; i < files.size(); i++)
+  {
+    c1 -> cd (i + 1);
+    gPad -> SetLeftMargin (0.1);
+    gPad -> SetRightMargin (0.);
+    gPad -> SetTopMargin (0.1);
+    gPad -> SetLogx (logX);
+    gPad -> SetLogy (logY);
+
+    hs = (THStack*) files [i] -> Get (object_name);
+    if (!hs) continue;
+    hs -> Draw ("nostack");    
+    TString xAxisTitle = hs -> GetHistogram()->GetXaxis() -> GetTitle();
+//    TString yAxisTitle = hs -> GetYaxis() -> GetTitle();
+    hs -> SetTitle (labels [i]);
+    TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
+    if (p) 
+    {
+      p -> Clear();
+      p -> InsertLine ();
+      p -> InsertText (labels [i]);
+      p -> SetTextSize (0.05);
+    }
+    hs -> SetName (object_name + Form ("_%d", i));
+    hs -> GetXaxis() -> SetTitle(xAxisTitle);
+    if (xRangeSet) hs -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+    if (yRangeSet) hs -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    stacks.push_back (hs);
+  }
+  
+  if (save_pdf)
+    c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx"));
+	if (save_png)
+		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_root)
+  { 
+    output_file -> cd();
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+  if (plot_ratio)
+  {
+    c -> SetName (Form("%s_ratio", c -> GetName()));
+    c -> cd();
+    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+    for (int i = 0; i < labels.size(); i++)
+    {
+      c1 -> cd (i + 1);
+      hs = (THStack*) gPad -> GetPrimitive (object_name + Form ("_%d", i));
+      if (!hs) continue;
+      if (! DivideTHStacks (hs, hs_ref)) 
+        break;
+    }
+    if (save_pdf) 
+      c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
+		if (save_png) 
+			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+    if (save_root)
+      c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+        
+  delete hs_ref;
+  for (auto hs : stacks)
+    delete hs;
   delete c0;
   delete c1;
   delete c;
@@ -721,6 +850,27 @@ bool DivideMultiGraphs (TMultiGraph* mg, TMultiGraph *mg_ref)
   
   mg -> SetMinimum (-4.);
   mg -> SetMaximum (4.);
+  
+  return true;
+}
+
+bool DivideTHStacks (THStack* hs, THStack *hs_ref)
+{
+  auto hslist = hs -> GetHists ();
+  auto hslist_ref = hs_ref -> GetHists ();
+  
+  if (hslist -> GetSize() != hslist_ref -> GetSize())
+  {
+    cout << "Error while dividing THStacks: different number of histograms!";
+    return false;
+  }
+  
+  int nHists = hslist -> GetSize();
+  for (int i = 0; i < nHists; i++)
+    ((TH1*) hslist -> At (i)) -> Divide ((TH1*) hslist_ref -> At (i));
+  
+  hs -> SetMinimum (-4.);
+  hs -> SetMaximum (4.);
   
   return true;
 }
