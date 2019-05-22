@@ -54,6 +54,7 @@ vector <float> xRange;
 vector <float> yRange;
 vector <float> zRange;
 bool logX, logY, logZ;
+float lts;
 TFile *output_file;
 
 inline istream& operator>>(istream& in, TString &data)
@@ -81,6 +82,7 @@ int main (int argc, char* argv[])
   gStyle -> SetOptStat (111111);
 //  gStyle -> SetTitleAlign (33);
   gStyle -> SetLegendBorderSize (0);
+  gStyle -> SetLegendTextSize (lts);
   gStyle->SetStatStyle (0);
 
   parseArgs (argc, argv);
@@ -174,6 +176,7 @@ bool parseArgs (int argc, char* argv[])
     ("logx", value<bool>()->implicit_value(true)->default_value(false), "SetLogX()")
     ("logy", value<bool>()->implicit_value(true)->default_value(false), "SetLogY()")
     ("logz", value<bool>()->implicit_value(false)->default_value(true), "SetLogZ(0)")
+    ("lts", value<float>()->default_value(0.07), "Legend Text Size")
     ("no-rescale", value<bool>()->implicit_value(false)->default_value(true), "Do not rescale histograms")
     ("save-empty", value<bool>()->implicit_value(true)->default_value(false), "Save empty and zero histograms")
     ("no-pdf", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to PDF file")
@@ -203,6 +206,7 @@ bool parseArgs (int argc, char* argv[])
   logX = args ["logx"].as <bool> ();
   logY = args ["logy"].as <bool> ();
   logZ = args ["logz"].as <bool> ();
+  lts = args ["lts"].as <float> ();
   
   if (args.count ("xrange")) xRange = args ["xrange"].as <vector <float> > ();
   if (args.count ("yrange")) yRange = args ["yrange"].as <vector <float> > ();
@@ -346,7 +350,7 @@ void PlotTH1 (TString object_name)
   {
     gPad -> SetRightMargin (0.2);
     stack -> Draw ("nostack");
-//    stack -> Draw ("histe nostack");
+//    stack -> Draw ("hist nostack"); // lines
 //    gPad -> BuildLegend (0.81, 0.0, 1.0, 1.0);
     stack -> GetXaxis() -> SetTitle (ref_hist -> GetXaxis () -> GetTitle());	
     stack -> GetYaxis() -> SetTitle (ref_hist -> GetYaxis () -> GetTitle());
@@ -598,7 +602,7 @@ void PlotMultiGraph (TString object_name)
   TString title = object_name;
   
   TLegend *leg = new TLegend (0.,0.,1.,1.);
-  leg -> SetTextSize(0.1);
+  leg -> SetTextSize(lts);
   TList *glist = mg_ref -> GetListOfGraphs();
   for (auto object : *glist)
     leg -> AddEntry (object, object -> GetTitle(),"pl");
@@ -632,10 +636,12 @@ void PlotMultiGraph (TString object_name)
 
     mg = (TMultiGraph*) files [i] -> Get (object_name);
     if (!mg) continue;
-    TString xAxisTitle = mg -> GetXaxis() -> GetTitle();
-    TString yAxisTitle = mg -> GetYaxis() -> GetTitle();
-    mg -> SetTitle (labels [i]);
     mg -> Draw ("apl");
+    TString xAxisTitle = mg -> GetHistogram() -> GetXaxis() -> GetTitle();
+    TString yAxisTitle = mg -> GetHistogram() -> GetYaxis() -> GetTitle();
+    if (xRangeSet) mg -> /*GetHistogram() -> */GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+    if (yRangeSet) mg -> /*GetHistogram() -> */GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    mg -> SetTitle (labels [i]);
     gPad -> Update();
     TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
     if (p) 
@@ -646,10 +652,8 @@ void PlotMultiGraph (TString object_name)
       p -> SetTextSize (0.05);
     }
     mg -> SetName (object_name + Form ("_%d", i));
-    mg -> GetXaxis() -> SetTitle(xAxisTitle);
-    mg -> GetYaxis() -> SetTitle(yAxisTitle);
-    if (xRangeSet) mg -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
-    if (yRangeSet) mg -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    mg -> /*GetHistogram() -> */GetXaxis() -> SetTitle(xAxisTitle);
+    mg -> /*GetHistogram() -> */GetYaxis() -> SetTitle(yAxisTitle);
     multiGraphs.push_back (mg);
   }
   
@@ -733,13 +737,11 @@ void PlotTHStack (TString object_name)
     gPad -> SetLeftMargin (0.1);
     gPad -> SetRightMargin (0.);
     gPad -> SetTopMargin (0.1);
-    gPad -> SetLogx (logX);
-    gPad -> SetLogy (logY);
 
     hs = (THStack*) files [i] -> Get (object_name);
     if (!hs) continue;
     hs -> Draw ("nostack");    
-    TString xAxisTitle = hs -> GetHistogram()->GetXaxis() -> GetTitle();
+    TString xAxisTitle = hs -> GetHistogram() -> GetXaxis() -> GetTitle();
 //    TString yAxisTitle = hs -> GetYaxis() -> GetTitle();
     hs -> SetTitle (labels [i]);
     TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
@@ -751,9 +753,11 @@ void PlotTHStack (TString object_name)
       p -> SetTextSize (0.05);
     }
     hs -> SetName (object_name + Form ("_%d", i));
-    hs -> GetXaxis() -> SetTitle(xAxisTitle);
+    hs -> GetHistogram() /*-> GetXaxis()*/ -> SetTitle(xAxisTitle);
     if (xRangeSet) hs -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) hs -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    gPad -> SetLogx (logX);
+    gPad -> SetLogy (logY);
     stacks.push_back (hs);
   }
   
