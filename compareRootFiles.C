@@ -26,8 +26,17 @@
 using namespace std;
 
 
-int colors [] = {kBlack, kRed, kBlue, kGreen+2, kMagenta+2, kOrange+2, kPink+2, kTeal+2, kCyan+2, kCyan+4, kAzure, kGray+3, kOrange+7, kGreen+4};
-int markerStyles [] = {20, 21, 22, 23, 29, 33, 34, 39, 41, 43, 45, 47, 48, 49};
+const vector <int> colors = 
+{
+  kBlack, kRed, kBlue, kGreen+2, kMagenta+2, kOrange+2, kPink+2,
+  kTeal+2, kCyan+2, kCyan+4, kAzure, kGray+3, kOrange+7, kGreen+4
+};
+const vector <int> lineStyles = {1, 7}; 
+const vector <vector <int>> markerStyles = 
+{ 
+  {20, 21, 22, 23, 29, 33, 34, 39, 41, 43, 45, 47, 48, 49}, // filled
+  {24, 25, 26, 32, 30, 27, 28, 37, 40, 42, 44, 46, 35, 36}  // empty
+};
 int canvasWidth = 640; 
 int canvasHeight = 480;
 
@@ -71,6 +80,7 @@ void PlotTH1 (TString object_name);
 void PlotGraph (TString object_name);
 void PlotMultiGraph (TString object_name);
 void PlotTHStack (TString object_name);
+void Plot2THStacks (TString object_name);
 void PlotTH2 (TString object_name);
 bool DivideGraphs (TGraph *graph, TGraph *graph_ref);
 bool DivideMultiGraphs (TMultiGraph *mg, TMultiGraph *mg_ref);
@@ -143,8 +153,10 @@ int main (int argc, char* argv[])
       PlotMultiGraph (object_name);
       
     else if (className.Contains ("THStack"))
-      PlotTHStack (object_name);
-    
+      if (labels.size() == 2)
+        Plot2THStacks (object_name);
+      else
+        PlotTHStack (object_name);
     else 
       delete object;
   } 
@@ -176,7 +188,7 @@ bool parseArgs (int argc, char* argv[])
     ("logx", value<bool>()->implicit_value(true)->default_value(false), "SetLogX()")
     ("logy", value<bool>()->implicit_value(true)->default_value(false), "SetLogY()")
     ("logz", value<bool>()->implicit_value(false)->default_value(true), "SetLogZ(0)")
-    ("lts", value<float>()->default_value(0.07), "Legend Text Size")
+    ("lts", value<float>()->default_value(0.03), "Legend Text Size")
     ("no-rescale", value<bool>()->implicit_value(false)->default_value(true), "Do not rescale histograms")
     ("save-empty", value<bool>()->implicit_value(true)->default_value(false), "Save empty and zero histograms")
     ("no-pdf", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to PDF file")
@@ -341,7 +353,7 @@ void PlotTH1 (TString object_name)
       stats -> SetY2NDC (1.0 - y_offset);
       TText *statTitle = stats -> GetLineWith (object_name);
       statTitle -> SetText (0, 0, labels [i]);
-      stack -> Add (hist);
+      stack -> Add (hist, hist->GetOption());
       hists.push_back (hist);
     }
   }
@@ -351,7 +363,7 @@ void PlotTH1 (TString object_name)
     gPad -> SetRightMargin (0.2);
     stack -> Draw ("nostack");
 //    stack -> Draw ("hist nostack"); // lines
-//    gPad -> BuildLegend (0.81, 0.0, 1.0, 1.0);
+    //gPad -> BuildLegend (0.8, 0.0, 1.0, 1.0);
     stack -> GetXaxis() -> SetTitle (ref_hist -> GetXaxis () -> GetTitle());	
     stack -> GetYaxis() -> SetTitle (ref_hist -> GetYaxis () -> GetTitle());
     if (xRangeSet) stack -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
@@ -412,7 +424,7 @@ void PlotGraph (TString object_name)
     graph -> SetLineWidth (2);
     graph -> SetLineColor  (colors [i]);
     graph -> SetMarkerColor (colors [i]);
-    graph -> SetMarkerStyle (markerStyles [i]);
+    graph -> SetMarkerStyle (markerStyles.at(0).at(i));
     graph -> SetFillColor (0);
     mg -> Add (graph);
   }
@@ -796,6 +808,101 @@ void PlotTHStack (TString object_name)
     delete hs;
   delete c0;
   delete c1;
+  delete c;
+}
+
+void Plot2THStacks (TString object_name)
+{
+  TLatex *text = new TLatex();
+  text -> SetNDC();
+  text -> SetTextSize (0.055);
+  text -> SetTextFont (42);
+  
+  TString title = object_name;
+  THStack *hs;
+  TCanvas *c = new TCanvas ("c_" + title, title);
+  c -> cd();
+  auto hs_ref = (THStack*) files [0] -> Get (object_name) -> Clone("htemp");
+  hs_ref -> Draw();
+  TString xAxisTitle = hs_ref->GetXaxis()->GetTitle();
+  TString yAxisTitle = hs_ref->GetYaxis()->GetTitle();
+  auto *hs_common = new THStack ("hs_" + object_name + ";" + xAxisTitle + ";" + yAxisTitle, hs_ref->GetTitle());
+  
+  TLegend *leg = new TLegend (0.81,0.,1.,1.);
+  leg -> SetTextSize (lts);
+  TList *hslist = hs_ref -> GetHists();
+  vector <TH1F> h_fake(2);
+  
+  text -> DrawLatex (0.1, 0.95, title);
+  for (int i = 0; i < files.size(); i++)
+  {
+    gPad -> SetLeftMargin (0.1);
+    gPad -> SetRightMargin (0.2);
+    gPad -> SetTopMargin (0.1);
+
+    h_fake.at(i).SetLineColor(kBlack);
+    h_fake.at(i).SetLineStyle(lineStyles.at(i));
+    leg -> AddEntry (&h_fake.at(i), labels.at(i), "l");
+
+    hs = (THStack*) files [i] -> Get (object_name);
+    if (!hs) continue;
+    hslist = hs -> GetHists ();
+    for (int j = 0; j < hslist -> GetSize(); j++)
+    {
+      TH1* h = (TH1*) hslist -> At(j);
+      h -> SetLineStyle(lineStyles.at(i));
+      h -> SetMarkerStyle(markerStyles.at(i).at(j));
+      hs_common -> Add(h,h->GetOption());
+    }
+//    TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
+//    if (p) 
+//    {
+//      p -> Clear();
+//      p -> InsertLine ();
+//      p -> InsertText (labels [i]);
+//      p -> SetTextSize (0.05);
+//    }
+  }
+  hs_common -> Draw ("NOSTACK");
+  for (auto h : *hslist)
+    leg -> AddEntry (h, h -> GetTitle(),"l");
+  leg -> Draw("same");
+  if (xRangeSet) hs_common -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+  if (yRangeSet) hs_common -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+  gPad -> SetLogx (logX);
+  gPad -> SetLogy (logY);
+  
+  if (save_pdf)
+    c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx"));
+	if (save_png)
+		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_root)
+  { 
+    output_file -> cd();
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+  if (plot_ratio)
+  {
+    c -> SetName (Form("%s_ratio", c -> GetName()));
+    c -> cd();
+    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+    hs = (THStack*) files [0] -> Get (object_name);
+    if (! hs && ! DivideTHStacks (hs, hs_ref))
+    {
+      hs -> Draw ("NOSTACK");
+      leg -> Draw("same");
+      if (save_pdf) 
+        c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
+      if (save_png) 
+        c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+      if (save_root)
+        c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+    }
+  }
+        
+  delete hs;
+  delete hs_ref;
+  delete hs_common;
   delete c;
 }
 
