@@ -322,7 +322,7 @@ void PlotTH1 (TString object_name)
     hist -> SetName (object_name + Form ("_%d", i));
     hist -> SetTitle (labels [i]);
         
-    if (rescale)
+    if (!hist -> InheritsFrom ("TProfile") && rescale)
     {
       float scale_factor;
       if (hist -> GetSumOfWeights() != 0) 
@@ -523,7 +523,7 @@ void PlotTH2 (TString object_name)
     hist -> SetName (object_name + Form ("_%d", i));
     hist -> SetTitle (labels [i]);
     
-    if (rescale)
+    if (!hist -> InheritsFrom ("TProfile2D") && rescale)
     {
       float scale_factor;
       if (hist -> GetSumOfWeights() != 0) 
