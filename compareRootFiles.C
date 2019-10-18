@@ -79,6 +79,7 @@ void BuildObjectList (TDirectory *folder, int depth = 0);
 void PlotTH1 (TString object_name);
 void PlotGraph (TString object_name);
 void PlotMultiGraph (TString object_name);
+void Plot2MultiGraphs (TString object_name);
 void PlotTHStack (TString object_name);
 void Plot2THStacks (TString object_name);
 void PlotTH2 (TString object_name);
@@ -150,13 +151,19 @@ int main (int argc, char* argv[])
       PlotGraph (object_name);
       
     else if (className.Contains ("TMultiGraph"))
-      PlotMultiGraph (object_name);
-      
+    { 
+      if (labels.size() == 2)
+        Plot2MultiGraphs (object_name);
+      else
+        PlotMultiGraph (object_name);
+    }
     else if (className.Contains ("THStack"))
+    {
       if (labels.size() == 2)
         Plot2THStacks (object_name);
       else
         PlotTHStack (object_name);
+    }
     else 
       delete object;
   } 
@@ -311,15 +318,16 @@ void PlotTH1 (TString object_name)
   float sumMean = 0;
   float sumError = 0;
   TString title = object_name;
-  TCanvas *c = new TCanvas ("c_" + title, title);
+  TString name = object_name.ReplaceAll ("/", "_");
+  TCanvas *c = new TCanvas ("c_" + name, title);
   c -> cd();
-  auto stack = new THStack ("st_" + object_name, title);
+  auto stack = new THStack ("st_" + name, title);
   
   for (int i = 0; i < files.size(); i++)
   {
     hist = (TH1*) files [i] -> Get (object_name);
     if (!hist) continue;
-    hist -> SetName (object_name + Form ("_%d", i));
+    hist -> SetName (name + Form ("_%d", i));
     hist -> SetTitle (labels [i]);
         
     if (!hist -> InheritsFrom ("TProfile") && rescale)
@@ -410,15 +418,16 @@ void PlotGraph (TString object_name)
   auto ref_graph = (TGraph*) files[0]->Get(object_name)->Clone("htemp");
   
   TString title = object_name;
+  TString name = object_name.ReplaceAll ("/", "_");
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
-  auto mg = new TMultiGraph ("mg_" + object_name, title);
+  auto mg = new TMultiGraph ("mg_" + name, title);
   
   for (int i = 0; i < files.size(); i++)
   {
     auto graph = (TGraph*) files [i] -> Get (object_name);
     if (!graph) continue;
-    graph -> SetName (object_name + Form ("_%d", i));
+    graph -> SetName (name + Form ("_%d", i));
     graph -> SetTitle (labels [i]);
     
     graph -> SetLineWidth (2);
@@ -448,7 +457,7 @@ void PlotGraph (TString object_name)
 	
   if (plot_ratio)
   {
-    mg -> SetName ("mg_" + object_name + "_ratio");
+    mg -> SetName ("mg_" + name + "_ratio");
     mg -> SetTitle (title + ": ratio to " + labels [0]);
     c -> SetName (Form ("%s_ratio", c -> GetName()));
     c -> SetTitle (Form ("%s: ratio to %s", c -> GetTitle(), labels [0].Data()));
@@ -497,6 +506,7 @@ void PlotTH2 (TString object_name)
   float sumMean = 0;
   float sumError = 0;
   TString title = object_name;
+  TString name = object_name.ReplaceAll ("/", "_");
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
   text -> DrawLatex (0.1, 0.95, title);
@@ -520,7 +530,7 @@ void PlotTH2 (TString object_name)
 
     hist = (TH2*) files [i] -> Get (object_name);
     if (!hist) continue;
-    hist -> SetName (object_name + Form ("_%d", i));
+    hist -> SetName (name + Form ("_%d", i));
     hist -> SetTitle (labels [i]);
     
     if (!hist -> InheritsFrom ("TProfile2D") && rescale)
@@ -578,7 +588,7 @@ void PlotTH2 (TString object_name)
       {
         c1 -> cd (i + 1);
         gPad -> SetLogz (0);
-        hist = (TH2*) gPad -> GetPrimitive (object_name + Form ("_%d", i));
+        hist = (TH2*) gPad -> GetPrimitive (name + Form ("_%d", i));
         if (!hist) continue;
   //      hist -> Sumw2()
         hist -> Divide (ref_hist);
@@ -612,6 +622,7 @@ void PlotMultiGraph (TString object_name)
   TMultiGraph *mg;
   auto mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
+  TString name = object_name.ReplaceAll ("/", "_");
   
   TLegend *leg = new TLegend (0.,0.,1.,1.);
   leg -> SetTextSize(lts);
@@ -663,7 +674,7 @@ void PlotMultiGraph (TString object_name)
       p -> InsertText (labels [i]);
       p -> SetTextSize (0.05);
     }
-    mg -> SetName (object_name + Form ("_%d", i));
+    mg -> SetName (name + Form ("_%d", i));
     mg -> /*GetHistogram() -> */GetXaxis() -> SetTitle(xAxisTitle);
     mg -> /*GetHistogram() -> */GetYaxis() -> SetTitle(yAxisTitle);
     multiGraphs.push_back (mg);
@@ -686,7 +697,7 @@ void PlotMultiGraph (TString object_name)
     for (int i = 0; i < labels.size(); i++)
     {
       c1 -> cd (i + 1);
-      mg = (TMultiGraph*) gPad -> GetPrimitive (object_name + Form ("_%d", i));
+      mg = (TMultiGraph*) gPad -> GetPrimitive (name + Form ("_%d", i));
       if (!mg) continue;
       if (! DivideMultiGraphs (mg, mg_ref)) 
         break;
@@ -707,6 +718,102 @@ void PlotMultiGraph (TString object_name)
   delete c;
 }
 
+void Plot2MultiGraphs (TString object_name)
+{
+  TLatex *text = new TLatex();
+  text -> SetNDC();
+  text -> SetTextSize (0.055);
+  text -> SetTextFont (42);
+  
+  TString title = object_name;
+  TString name = object_name.ReplaceAll ("/", "_");
+  TMultiGraph *mg;
+  TCanvas *c = new TCanvas ("c_" + title, title);
+  c -> cd();
+  TMultiGraph *mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
+  mg_ref -> Draw();
+  TString xAxisTitle = mg_ref->GetXaxis()->GetTitle();
+  TString yAxisTitle = mg_ref->GetYaxis()->GetTitle();
+  TMultiGraph *mg_common = new TMultiGraph ("mg_" + name + ";" + xAxisTitle + ";" + yAxisTitle, mg_ref->GetTitle());
+  
+  TLegend *leg = new TLegend (0.81,0.,1.,1.);
+  leg -> SetTextSize (lts);
+  TList *glist = mg_ref -> GetListOfGraphs();
+  vector <TH1F> g_fake(2);
+  
+  text -> DrawLatex (0.1, 0.95, title);
+  for (int i = 0; i < files.size(); i++)
+  {
+    gPad -> SetLeftMargin (0.1);
+    gPad -> SetRightMargin (0.2);
+    gPad -> SetTopMargin (0.1);
+
+    g_fake.at(i).SetLineColor(kBlack);
+    g_fake.at(i).SetLineStyle(lineStyles.at(i));
+    leg -> AddEntry (&g_fake.at(i), labels.at(i), "l");
+
+    mg = (TMultiGraph*) files [i] -> Get (object_name);
+    if (!mg) continue;
+    glist = mg -> GetListOfGraphs ();
+    for (int j = 0; j < glist -> GetSize(); j++)
+    {
+      TGraphAsymmErrors* g = (TGraphAsymmErrors*) glist -> At(j);
+      g -> SetLineStyle(lineStyles.at(i));
+      g -> SetMarkerStyle(markerStyles.at(i).at(j));
+      mg_common -> Add(g,g->GetOption());
+    }
+//    TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
+//    if (p) 
+//    {
+//      p -> Clear();
+//      p -> InsertLine ();
+//      p -> InsertText (labels [i]);
+//      p -> SetTextSize (0.05);
+//    }
+  }
+  mg_common -> Draw ();
+  for (auto g : *glist)
+    leg -> AddEntry (g, g -> GetTitle(),"l");
+  leg -> Draw("same");
+  if (xRangeSet) mg_common -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+  if (yRangeSet) mg_common -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+  gPad -> SetLogx (logX);
+  gPad -> SetLogy (logY);
+  
+  if (save_pdf)
+    c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx"));
+	if (save_png)
+		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_root)
+  { 
+    output_file -> cd();
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+  if (plot_ratio)
+  {
+    c -> SetName (Form("%s_ratio", c -> GetName()));
+    c -> cd();
+    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+    mg = (TMultiGraph*) files [0] -> Get (object_name);
+    if (! mg && ! DivideMultiGraphs (mg, mg_ref))
+    {
+      mg -> Draw ();
+      leg -> Draw("same");
+      if (save_pdf) 
+        c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
+      if (save_png) 
+        c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+      if (save_root)
+        c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+    }
+  }
+        
+  delete mg;
+  delete mg_ref;
+  delete mg_common;
+  delete c;
+}
+
 void PlotTHStack (TString object_name)
 {
   TLatex *text = new TLatex();
@@ -718,6 +825,7 @@ void PlotTHStack (TString object_name)
   THStack *hs;
   auto hs_ref = (THStack*) files [0] -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
+  TString name = object_name.ReplaceAll ("/", "_");
   
   TLegend *leg = new TLegend (0.,0.,1.,1.);
   leg -> SetTextSize(0.1);
@@ -764,7 +872,7 @@ void PlotTHStack (TString object_name)
       p -> InsertText (labels [i]);
       p -> SetTextSize (0.05);
     }
-    hs -> SetName (object_name + Form ("_%d", i));
+    hs -> SetName (name + Form ("_%d", i));
     hs -> GetHistogram() /*-> GetXaxis()*/ -> SetTitle(xAxisTitle);
     if (xRangeSet) hs -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) hs -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
@@ -790,7 +898,7 @@ void PlotTHStack (TString object_name)
     for (int i = 0; i < labels.size(); i++)
     {
       c1 -> cd (i + 1);
-      hs = (THStack*) gPad -> GetPrimitive (object_name + Form ("_%d", i));
+      hs = (THStack*) gPad -> GetPrimitive (name + Form ("_%d", i));
       if (!hs) continue;
       if (! DivideTHStacks (hs, hs_ref)) 
         break;
@@ -819,6 +927,7 @@ void Plot2THStacks (TString object_name)
   text -> SetTextFont (42);
   
   TString title = object_name;
+  TString name = object_name.ReplaceAll ("/", "_");
   THStack *hs;
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
@@ -826,7 +935,7 @@ void Plot2THStacks (TString object_name)
   hs_ref -> Draw();
   TString xAxisTitle = hs_ref->GetXaxis()->GetTitle();
   TString yAxisTitle = hs_ref->GetYaxis()->GetTitle();
-  auto *hs_common = new THStack ("hs_" + object_name + ";" + xAxisTitle + ";" + yAxisTitle, hs_ref->GetTitle());
+  auto *hs_common = new THStack ("hs_" + name + ";" + xAxisTitle + ";" + yAxisTitle, hs_ref->GetTitle());
   
   TLegend *leg = new TLegend (0.81,0.,1.,1.);
   leg -> SetTextSize (lts);
