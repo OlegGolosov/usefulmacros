@@ -318,7 +318,8 @@ void PlotTH1 (TString object_name)
   float sumMean = 0;
   float sumError = 0;
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   TCanvas *c = new TCanvas ("c_" + name, title);
   c -> cd();
   auto stack = new THStack ("st_" + name, title);
@@ -418,7 +419,8 @@ void PlotGraph (TString object_name)
   auto ref_graph = (TGraph*) files[0]->Get(object_name)->Clone("htemp");
   
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
   auto mg = new TMultiGraph ("mg_" + name, title);
@@ -506,7 +508,8 @@ void PlotTH2 (TString object_name)
   float sumMean = 0;
   float sumError = 0;
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
   text -> DrawLatex (0.1, 0.95, title);
@@ -622,7 +625,8 @@ void PlotMultiGraph (TString object_name)
   TMultiGraph *mg;
   auto mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   
   TLegend *leg = new TLegend (0.,0.,1.,1.);
   leg -> SetTextSize(lts);
@@ -726,19 +730,23 @@ void Plot2MultiGraphs (TString object_name)
   text -> SetTextFont (42);
   
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   TMultiGraph *mg;
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
+  cout << object_name << endl;
   TMultiGraph *mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
   mg_ref -> Draw();
   TString xAxisTitle = mg_ref->GetXaxis()->GetTitle();
   TString yAxisTitle = mg_ref->GetYaxis()->GetTitle();
-  TMultiGraph *mg_common = new TMultiGraph ("mg_" + name + ";" + xAxisTitle + ";" + yAxisTitle, mg_ref->GetTitle());
+  TMultiGraph *mg_common = new TMultiGraph ("mg_" + name, (TString)mg_ref->GetTitle() + ";" + xAxisTitle + ";" + yAxisTitle);
   
   TLegend *leg = new TLegend (0.81,0.,1.,1.);
   leg -> SetTextSize (lts);
   TList *glist = mg_ref -> GetListOfGraphs();
+  for (auto g : *glist)
+    leg -> AddEntry (g, g -> GetTitle(),"l");
   vector <TH1F> g_fake(2);
   
   text -> DrawLatex (0.1, 0.95, title);
@@ -755,6 +763,7 @@ void Plot2MultiGraphs (TString object_name)
     mg = (TMultiGraph*) files [i] -> Get (object_name);
     if (!mg) continue;
     glist = mg -> GetListOfGraphs ();
+    if (!glist) continue;
     for (int j = 0; j < glist -> GetSize(); j++)
     {
       TGraphAsymmErrors* g = (TGraphAsymmErrors*) glist -> At(j);
@@ -771,9 +780,7 @@ void Plot2MultiGraphs (TString object_name)
 //      p -> SetTextSize (0.05);
 //    }
   }
-  mg_common -> Draw ();
-  for (auto g : *glist)
-    leg -> AddEntry (g, g -> GetTitle(),"l");
+  mg_common -> Draw ("apl");
   leg -> Draw("same");
   if (xRangeSet) mg_common -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
   if (yRangeSet) mg_common -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
@@ -808,9 +815,9 @@ void Plot2MultiGraphs (TString object_name)
     }
   }
         
-  delete mg;
-  delete mg_ref;
-  delete mg_common;
+  //delete mg;
+  //delete mg_ref;
+  //delete mg_common;
   delete c;
 }
 
@@ -825,7 +832,8 @@ void PlotTHStack (TString object_name)
   THStack *hs;
   auto hs_ref = (THStack*) files [0] -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   
   TLegend *leg = new TLegend (0.,0.,1.,1.);
   leg -> SetTextSize(0.1);
@@ -927,7 +935,8 @@ void Plot2THStacks (TString object_name)
   text -> SetTextFont (42);
   
   TString title = object_name;
-  TString name = object_name.ReplaceAll ("/", "_");
+  TString name = object_name;
+  name.ReplaceAll ("/", "_");
   THStack *hs;
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
@@ -935,7 +944,7 @@ void Plot2THStacks (TString object_name)
   hs_ref -> Draw();
   TString xAxisTitle = hs_ref->GetXaxis()->GetTitle();
   TString yAxisTitle = hs_ref->GetYaxis()->GetTitle();
-  auto *hs_common = new THStack ("hs_" + name + ";" + xAxisTitle + ";" + yAxisTitle, hs_ref->GetTitle());
+  auto *hs_common = new THStack ("hs_" + name, (TString)hs_ref->GetTitle() + ";" + xAxisTitle + ";" + yAxisTitle);
   
   TLegend *leg = new TLegend (0.81,0.,1.,1.);
   leg -> SetTextSize (lts);
