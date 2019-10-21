@@ -8,7 +8,7 @@ list(APPEND CMAKE_PREFIX_PATH $ENV{ROOTSYS})
 find_package(ROOT REQUIRED COMPONENTS RIO)
 find_package(Boost COMPONENTS program_options REQUIRED)
 include(${ROOT_USE_FILE})
-include_directories(SYSTEM BEFORE ${ROOT_INCLUDE_DIRS} ${Boost_INCLUDE_DIR})
+include_directories(${ROOT_INCLUDE_DIRS} ${Boost_INCLUDE_DIR})
 
 add_executable(compareRootFiles compareRootFiles.C)
 target_link_libraries(compareRootFiles ${Boost_LIBRARIES} ${ROOT_LIBRARIES})
