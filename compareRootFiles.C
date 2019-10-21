@@ -191,6 +191,7 @@ bool parseArgs (int argc, char* argv[])
     ("help,h", "Print usage message")
     ("input,i", value< vector<TString> >()->required()->multitoken(), "Input ROOT files")
     ("labels,l", value< vector<TString> >()->multitoken(),"Labels for each file")
+    ("pattern,p", value<string>(&gIncludePattern), "include only objects matching pattern")
     ("exclude,e", value< vector<TString> >()->multitoken(),"Folders to exclude")
     ("output,o", value<TString>()->default_value("comp.root"),"Output file")
     ("folder,f", value<TString>()->default_value("/"), "Directory to compare")
@@ -208,8 +209,6 @@ bool parseArgs (int argc, char* argv[])
     ("no-pdf", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to PDF file")
     ("no-root", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to ROOT file")
     ("png", value<bool>()->implicit_value(true)->default_value(false), "Write output to png files")
-
-    ("include-pattern", value<string>(&gIncludePattern), "include only objects matching pattern")
   ;
   
   variables_map args;
@@ -265,7 +264,7 @@ bool parseArgs (int argc, char* argv[])
     return false;
   }
 
-  if (args.count("include-pattern"))
+  if (args.count("pattern"))
     gUseIncludePattern = true;
 
 
