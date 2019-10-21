@@ -360,7 +360,7 @@ void PlotTH1 (TString object_name)
       float y_offset = 0.1 * i;
       stats -> SetY1NDC (0.9 - y_offset);
       stats -> SetY2NDC (1.0 - y_offset);
-      TText *statTitle = stats -> GetLineWith (object_name);
+      TText *statTitle = stats -> GetLineWith (name);
       statTitle -> SetText (0, 0, labels [i]);
       stack -> Add (hist, hist->GetOption());
       hists.push_back (hist);
