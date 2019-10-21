@@ -22,6 +22,8 @@
 #include <TMultiGraph.h>
 #include <TError.h>
 #include <iostream>
+#include <regex>
+#include <algorithm>
 
 using namespace std;
 
@@ -66,6 +68,9 @@ bool logX, logY, logZ;
 float lts;
 TFile *output_file;
 
+bool gUseIncludePattern = false;
+string gIncludePattern = "";
+
 inline istream& operator>>(istream& in, TString &data)
 {
   string token;
@@ -76,6 +81,7 @@ inline istream& operator>>(istream& in, TString &data)
 
 bool parseArgs (int argc, char* argv[]);
 void BuildObjectList (TDirectory *folder, int depth = 0);
+void FilterObjectList();
 void PlotTH1 (TString object_name);
 void PlotGraph (TString object_name);
 void PlotMultiGraph (TString object_name);
@@ -111,6 +117,7 @@ int main (int argc, char* argv[])
   }
    
   BuildObjectList (dirs [0]);
+  FilterObjectList();
   for (auto dir : dirs) 
   {
 //    object_names = sorted (list(set(object_names).intersection(BuildObjectList (dir))), key = object_names.index)
@@ -201,6 +208,8 @@ bool parseArgs (int argc, char* argv[])
     ("no-pdf", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to PDF file")
     ("no-root", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to ROOT file")
     ("png", value<bool>()->implicit_value(true)->default_value(false), "Write output to png files")
+
+    ("include-pattern", value<string>(&gIncludePattern), "include only objects matching pattern")
   ;
   
   variables_map args;
@@ -255,6 +264,11 @@ bool parseArgs (int argc, char* argv[])
     cout << "Error! Number of labels provided is other than number of input files!\n";
     return false;
   }
+
+  if (args.count("include-pattern"))
+    gUseIncludePattern = true;
+
+
   for (int i = labels.size(); i < inputFileNames.size(); i++) {
     TString label = inputFileNames[i];
     if (label.Contains ("/"))
@@ -267,7 +281,9 @@ bool parseArgs (int argc, char* argv[])
     outputPath = outputPath.Remove (outputPath.Last ('.'), 5);
     
   outputPathPdf = outputPath + ".pdf";
-    
+
+
+
   return true;
 }
 
@@ -1102,4 +1118,24 @@ bool DivideTHStacks (THStack* hs, THStack *hs_ref)
   hs -> SetMaximum (4.);
   
   return true;
+}
+
+
+
+void FilterObjectList() {
+  if (!gUseIncludePattern) {
+    return;
+  }
+
+  regex re(gIncludePattern);
+
+  decltype(object_names) objectsFiltered;
+
+  copy_if(object_names.begin(), object_names.end(), back_inserter(objectsFiltered), [=] (const TString &name) {
+    return regex_match(&name.Data()[0], &name.Data()[name.Length()], re);
+  });
+
+  swap(objectsFiltered, object_names);
+
+  return;
 }
