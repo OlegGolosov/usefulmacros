@@ -56,7 +56,7 @@ bool saveEmpty = false;
 vector <TFile*> files;
 vector <TDirectory*> dirs;
 vector <TString> object_names;
-TString outputPath = "comp.root"; 
+TString outputPath = "comp"; 
 TString outputPathPdf = "comp.pdf";
 bool xRangeSet = false;
 bool yRangeSet = false;
@@ -298,7 +298,8 @@ void BuildObjectList (TDirectory *folder, int depth)
     TString object_name = key -> GetName();
     auto object = dynamic_cast <TKey*> (key) -> ReadObj ();
     TString className = object -> ClassName();
-    if (className.BeginsWith ("TH") || className.BeginsWith ("TProfile") || className.Contains ("Graph"))
+    if (!className.Contains ("3") && 
+      (className.BeginsWith ("TH") || className.BeginsWith ("TProfile") || className.Contains ("Graph")))
       object_names.push_back (folder_path + '/' + object_name);
     else if (className == "TDirectoryFile" && depth < maxDepth)
     {
