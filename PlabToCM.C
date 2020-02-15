@@ -1,6 +1,5 @@
 void PlabToCM(float pl)
 {
-// code to calculate T0 for a given energy
   float mp=0.938;
   float El=sqrt(pl*pl+mp*mp);
   float Ekin=El-mp;
@@ -8,7 +7,7 @@ void PlabToCM(float pl)
   float e_cm=sqrt( pc*pc + mp*mp );
   float ss = sqrt( 4*(pc*pc + mp*mp) );
   float yBeam = 0.25 * log ((El + pl) / (El - pl));
-  cout << "E = " << El << endl;
+  cout << "Elab = " << El << endl;
   cout << "Ekin = " << Ekin << endl;
   cout << "P* = " << pc << endl;
   cout << "E* = " << e_cm << endl;
