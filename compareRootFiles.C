@@ -24,6 +24,7 @@
 #include <iostream>
 #include <regex>
 #include <algorithm>
+#include <limits>
 
 using namespace std;
 
@@ -41,18 +42,27 @@ const vector <vector <int>> markerStyles =
 };
 int canvasWidth = 640; 
 int canvasHeight = 480;
+float ratioPadSize = 0.3;
 
 vector <TString> inputFileNames; 
 vector <TString> excludedFolders;
 vector <TString> labels;
 TString folderName;
-int maxDepth = 10;
+TString th1option = "e";
+TString th2option = "colz";
+TString thStackOption = "nostack";
+TString graphOption = "pl";
+TString multiGraphOption = "apl";
+int refLineStyle = 3;
+int maxDepth = 100;
 bool rescale = true;
 bool plot_ratio = false;
 bool save_root = true;
 bool save_png = false;
 bool save_pdf = true;
 bool saveEmpty = false;
+bool plotLegend = false;
+bool plotTitle = true;
 vector <TFile*> files;
 vector <TDirectory*> dirs;
 vector <TString> object_names;
@@ -61,10 +71,12 @@ TString outputPathPdf = "comp.pdf";
 bool xRangeSet = false;
 bool yRangeSet = false;
 bool zRangeSet = false;
+bool ratioRangeSet = false;
 vector <float> xRange;
 vector <float> yRange;
 vector <float> zRange;
-bool logX, logY, logZ;
+vector <float> ratioRange;
+bool logX, logY,logX2d, logY2d, logZ;
 float lts;
 TFile *output_file;
 
@@ -92,17 +104,21 @@ void PlotTH2 (TString object_name);
 bool DivideGraphs (TGraph *graph, TGraph *graph_ref);
 bool DivideMultiGraphs (TMultiGraph *mg, TMultiGraph *mg_ref);
 bool DivideTHStacks (THStack* hs, THStack *hs_ref);
+void GetRangeY (vector <TH1*> hists, vector <float> &range, bool logY = false);
+void GetRangeY (vector <TGraph*> graphs, vector <float> &range, bool logY = false);
 
 int main (int argc, char* argv[])
 {
   gErrorIgnoreLevel = 2000;
-  gStyle -> SetOptStat (111111);
+  gStyle  -> SetOptStat (111111);
 //  gStyle -> SetTitleAlign (33);
   gStyle -> SetLegendBorderSize (0);
   gStyle -> SetLegendTextSize (lts);
   gStyle->SetStatStyle (0);
+  gStyle->SetOptTitle(0);
 
-  parseArgs (argc, argv);
+  if(!parseArgs (argc, argv))
+    return -1;
   
   if (save_png)
     gSystem -> Exec("mkdir -p " + outputPath); 
@@ -116,7 +132,7 @@ int main (int argc, char* argv[])
     dirs.push_back(files.back() -> GetDirectory (folderName));
   }
    
-  BuildObjectList (dirs [0]);
+  BuildObjectList (dirs.at(0));
   FilterObjectList();
   for (auto dir : dirs) 
   {
@@ -135,7 +151,7 @@ int main (int argc, char* argv[])
   for (int i = 0; i < labels.size(); i++)
   {
     float ypos = 0.85 - 0.05 * i;
-    text -> DrawLatex(0.1, ypos, inputFileNames [i] + " (" + labels [i] + ")");
+    text -> DrawLatex(0.1, ypos, inputFileNames.at(i) + " (" + labels.at(i) + ")");
   }
   if (save_pdf) c -> Print (outputPathPdf + "(","Title:Title");
       
@@ -145,7 +161,7 @@ int main (int argc, char* argv[])
       object_name.Remove (0,1);
     cout << object_name << endl;
     
-    TObject *object = files [0] -> Get(object_name);
+    TObject *object = files.at(0) -> Get(object_name);
     TString className = object -> ClassName();
       
     if (className.Contains ("TH2") || className.Contains ("TProfile2"))
@@ -193,7 +209,7 @@ bool parseArgs (int argc, char* argv[])
     ("labels,l", value< vector<TString> >()->multitoken(),"Labels for each file")
     ("exclude,e", value< vector<TString> >()->multitoken(),"Folders to exclude")
     ("pattern,p", value<string>(&gIncludePattern),
-        "include only objects matching pattern e.g --include-pattern=\".*psd[1-3]_psd[1-3]_(X|Y){2}\"")
+        "include only objects matching pattern e.g. \".*psd[1-3]_psd[1-3]_(X|Y){2}\"")
     ("output,o", value<TString>()->default_value("comp.root"),"Output file")
     ("folder,f", value<TString>()->default_value("/"), "Directory to compare")
     ("depth,d", value<int>()->default_value(10), "Maximum depth of folder search")
@@ -201,10 +217,19 @@ bool parseArgs (int argc, char* argv[])
     ("xrange,x", value< vector<float> >()->multitoken(),"X axis range") 
     ("yrange,y", value< vector<float> >()->multitoken(),"Y axis range")
     ("zrange,z", value< vector<float> >()->multitoken(),"Z axis range")
+    ("ratio-range", value< vector<float> >()->multitoken(),"Ratio range")
     ("logx", value<bool>()->implicit_value(true)->default_value(false), "SetLogX()")
+    ("logx2d", value<bool>()->implicit_value(true)->default_value(false), "SetLogX() for 2D plots")
     ("logy", value<bool>()->implicit_value(true)->default_value(false), "SetLogY()")
+    ("logy2d", value<bool>()->implicit_value(true)->default_value(false), "SetLogY() for 2D plots")
     ("logz", value<bool>()->implicit_value(false)->default_value(true), "SetLogZ(0)")
+    ("legend", value<bool>()->implicit_value(true)->default_value(false), "Plot legend instead of stats for TH1")
     ("lts", value<float>()->default_value(0.03), "Legend Text Size")
+    ("opt1", value<TString>()->default_value("e"), "TH1 drawing option")
+    ("opt2", value<TString>()->default_value("colz"), "TH2 drawing option")
+    ("optG", value<TString>()->default_value("a"), "TGraph drawing option")
+    ("optMG", value<TString>()->default_value("apl"), "TMultiGraph drawing option")
+    ("optHS", value<TString>()->default_value("nostack"), "THStack drawing option")
     ("no-rescale", value<bool>()->implicit_value(false)->default_value(true), "Do not rescale histograms")
     ("save-empty", value<bool>()->implicit_value(true)->default_value(false), "Save empty and zero histograms")
     ("no-pdf", value<bool>()->implicit_value(false)->default_value(true), "Do not write output to PDF file")
@@ -217,7 +242,7 @@ bool parseArgs (int argc, char* argv[])
 
   if (args.count("help")) {  
       cout << desc << "\n";
-      return 0;
+      return false;
   }
   notify (args); 
 
@@ -232,13 +257,22 @@ bool parseArgs (int argc, char* argv[])
   save_root = args ["no-root"].as <bool> ();
   save_png = args ["png"].as <bool> ();
   logX = args ["logx"].as <bool> ();
+  logX2d = args ["logx2d"].as <bool> ();
   logY = args ["logy"].as <bool> ();
+  logY2d = args ["logy2d"].as <bool> ();
   logZ = args ["logz"].as <bool> ();
+  plotLegend = args ["legend"].as <bool> ();
   lts = args ["lts"].as <float> ();
+  th1option = args ["opt1"].as <TString> ();
+  th2option = args ["opt2"].as <TString> ();
+  thStackOption = args ["optHS"].as <TString> ();
+  graphOption = args ["optG"].as <TString> ();
+  multiGraphOption = args ["optMG"].as <TString> ();
   
   if (args.count ("xrange")) xRange = args ["xrange"].as <vector <float> > ();
   if (args.count ("yrange")) yRange = args ["yrange"].as <vector <float> > ();
   if (args.count ("zrange")) zRange = args ["zrange"].as <vector <float> > ();
+  if (args.count ("ratio-range")) ratioRange = args ["ratio-range"].as <vector <float> > ();
   
   if (xRange.size() >= 2)
   {
@@ -254,6 +288,11 @@ bool parseArgs (int argc, char* argv[])
   {
     if (zRange.at(1) > zRange.at(0)) zRangeSet = true;
     else cout << "WARNING: upper Z axis range is smaller than the lower one.\n Switching to default.\n";
+  } 
+  if (ratioRange.size() >= 2)
+  {
+    if (ratioRange.at(1) > ratioRange.at(0)) ratioRangeSet = true;
+    else cout << "WARNING: upper ratio range is smaller than the lower one.\n Switching to default.\n";
   } 
   
   if (args.count ("exclude")) excludedFolders = args ["exclude"].as <vector <TString> > (); 
@@ -282,7 +321,8 @@ bool parseArgs (int argc, char* argv[])
     
   outputPathPdf = outputPath + ".pdf";
 
-
+  if (labels.size() < 2) 
+    plot_ratio = false;
 
   return true;
 }
@@ -315,11 +355,13 @@ void BuildObjectList (TDirectory *folder, int depth)
 
 void PlotTH1 (TString object_name)
 {
-  auto ref_obj = files[0]->Get(object_name)->Clone("htemp");
+  vector <TH1*> hists (files.size()), rhists;
+  for (uint i = 0; i < hists.size(); i++)
+    hists.at(i) = (TH1*) files.at(i) -> Get (object_name);
+  auto ref_obj = hists.at(0)->Clone("htemp");
   TProfile *ref_P1D = nullptr;
   TH1 *ref_hist = nullptr;
   TH1 *hist = nullptr;
-  vector <TH1*> hists;
   
   if (nullptr != (ref_P1D = dynamic_cast <TProfile*> (ref_obj)))
   {
@@ -329,8 +371,11 @@ void PlotTH1 (TString object_name)
   else
     ref_hist = dynamic_cast<TH1*> (ref_obj);  
 
-//  ref_hist -> Sumw2();
+  ref_hist -> Sumw2();
   
+  if (!yRangeSet) 
+    GetRangeY(hists, yRange, logY);
+
   int nEntries = 0;
   float sumMean = 0;
   float sumError = 0;
@@ -338,15 +383,17 @@ void PlotTH1 (TString object_name)
   TString name = object_name;
   name.ReplaceAll ("/", "_");
   TCanvas *c = new TCanvas ("c_" + name, title);
-  c -> cd();
-  auto stack = new THStack ("st_" + name, title);
+  c -> SetRightMargin (0.2);
+  c -> cd ();
+  TPad *c1; 
+  TLine *line;
   
-  for (int i = 0; i < files.size(); i++)
+  for (int i = 0; i < hists.size(); i++)
   {
-    hist = (TH1*) files [i] -> Get (object_name);
+    hist = hists.at(i);
     if (!hist) continue;
     hist -> SetName (name + Form ("_%d", i));
-    hist -> SetTitle (labels [i]);
+    hist -> SetTitle (labels.at(i));
         
     if (!hist -> InheritsFrom ("TProfile") && rescale)
     {
@@ -362,40 +409,90 @@ void PlotTH1 (TString object_name)
     sumMean += hist -> GetMean(); 
     sumError += hist -> GetMeanError(); 
     hist -> SetLineWidth (2);
-    hist -> SetLineColor  (colors [i]);
-    hist -> SetMarkerColor (colors [i]);
-    hist -> Draw ();
+    hist -> SetLineColor  (colors.at(i));
+    hist -> SetMarkerColor (colors.at(i));
+    TString option;
+    if (i == 0) option = th1option;
+    else option = "sames " + th1option;
+    hist -> Draw (option);
     gPad -> Modified ();
     gPad -> Update ();
     auto stats = (TPaveStats*) hist -> GetListOfFunctions() -> FindObject("stats");
     if (stats)
     {
       stats -> SetName (Form ("stats_%d", i));
-      stats -> SetTextColor (colors [i]);
+      stats -> SetTextColor (colors.at(i));
       stats -> SetX1NDC (0.8);
       stats -> SetX2NDC (1.0);
       float y_offset = 0.1 * i;
       stats -> SetY1NDC (0.9 - y_offset);
       stats -> SetY2NDC (1.0 - y_offset);
-      TText *statTitle = stats -> GetLineWith (name);
-      statTitle -> SetText (0, 0, labels [i]);
-      stack -> Add (hist, hist->GetOption());
-      hists.push_back (hist);
+      TText *statTitle = stats -> GetLineWith (hist->GetName());
+      statTitle -> SetText (0, 0, labels.at(i));
+      hist -> SetStats(0);
     }
   }
   
   if (saveEmpty || (!saveEmpty && (nEntries > 0 || sumMean > 0. || sumError > 0.)))
   {
-    gPad -> SetRightMargin (0.2);
-    stack -> Draw ("nostack");
-//    stack -> Draw ("hist nostack"); // lines
-    //gPad -> BuildLegend (0.8, 0.0, 1.0, 1.0);
-    stack -> GetXaxis() -> SetTitle (ref_hist -> GetXaxis () -> GetTitle());	
-    stack -> GetYaxis() -> SetTitle (ref_hist -> GetYaxis () -> GetTitle());
-    if (xRangeSet) stack -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
-    if (yRangeSet) stack -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    if (plotLegend)
+      gPad -> BuildLegend (0.8011, ratioPadSize, 1.0, 1.0);
+    if (xRangeSet) hists.at(0) -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+    hists.at(0) -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
     c -> SetLogx (logX);
     c -> SetLogy (logY);
+    
+    if (plotTitle)
+    {
+      TLatex *text = new TLatex();
+      text -> SetNDC();
+      text -> SetTextSize (0.055);
+      text -> SetTextFont (42); 
+      text -> DrawLatex (0.1, 0.95, title);
+    }
+
+    if (plot_ratio)
+    {
+      c->SetBottomMargin(ratioPadSize);
+      c1 = new TPad (Form ("%s_ratio", c -> GetName()),"",0.,0.,1.,ratioPadSize);
+      c1 -> SetTopMargin(0.);
+      c1 -> SetRightMargin(0.2);
+      c1 -> SetBottomMargin(0.1 / ratioPadSize);
+      c1 -> Draw();
+      TString yAxisTitle = "ratio";
+      c1->cd();
+      for (uint i = 1; i < hists.size(); i++)
+      {
+	auto hist = (TH1*)hists.at(i) -> Clone(Form("%s_ratio", hists.at(i) -> GetName())); 
+	hist -> SetTitle (Form("%s_ratio", hists.at(i) -> GetTitle()));
+        hist -> Divide (ref_hist);
+	hist -> SetStats (0);
+	hist -> Draw("same " + th1option);
+	TObject *stats = hist -> GetListOfFunctions() -> FindObject(Form ("stats_%d", i));
+        if (stats) stats -> Delete();
+        rhists.push_back(hist);
+      }
+      if (!ratioRangeSet) 
+	GetRangeY(rhists, ratioRange);
+      
+      TAxis *xAxis = rhists.at(0) -> GetXaxis();
+      xAxis -> SetTitleSize(xAxis -> GetTitleSize() / ratioPadSize);
+      xAxis -> SetLabelSize(xAxis -> GetLabelSize() / ratioPadSize);
+      xAxis -> SetTickLength(xAxis -> GetTickLength() / ratioPadSize);
+      if (xRangeSet) xAxis -> SetRangeUser(xRange.at(0), xRange.at(1));
+      
+      TAxis *yAxis = rhists.at(0) -> GetYaxis();
+      yAxis -> SetTitle (yAxisTitle);
+      yAxis -> SetTitleSize(yAxis -> GetTitleSize() / ratioPadSize);
+      yAxis -> SetTitleOffset(0.1 / ratioPadSize);
+      yAxis -> SetLabelSize(yAxis -> GetLabelSize() / ratioPadSize);
+      yAxis -> SetRangeUser (ratioRange.at(0), ratioRange.at(1));
+      yAxis -> SetNdivisions (505);
+
+      line = new TLine (xAxis->GetXmin(),1,xAxis->GetXmax(),1);
+      line->SetLineStyle(refLineStyle);
+      line->Draw();
+    }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx"));
     if (save_png) 
@@ -405,99 +502,138 @@ void PlotTH1 (TString object_name)
       output_file -> cd();
       c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
     }
-    
-    if (plot_ratio)
-    {
-      c -> SetName (Form ("%s_ratio", c -> GetName()));
-      c -> SetTitle (Form ("%s: ratio to %s", c -> GetTitle(), labels [0].Data()));
-      for (auto hist : hists)
-      {
-        //hist -> Sumw2()
-        hist -> Divide (ref_hist);
-        hist -> GetYaxis() -> SetRangeUser (0., 4.);
-      }
-      if (save_pdf) 
-        c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx") + "_ratio");
-      if (save_png) 
-        c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
-      if (save_root) 
-        c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
-    }
   }  
-  delete stack;
   delete ref_hist;
   for (auto hist : hists)
     delete hist;
-  delete c;
+  if (plot_ratio) 
+  {
+    for (auto hist : rhists)
+      delete hist;
+    delete line;
+  }
 }
+
 
 void PlotGraph (TString object_name)
 {
-  auto ref_graph = (TGraph*) files[0]->Get(object_name)->Clone("htemp");
+  vector <TGraph*> graphs(files.size()), rgraphs;
+  for (uint i = 0; i < files.size(); i++)
+    graphs.at(i) = (TGraph*) files.at(i)->Get(object_name); 
+  auto ref_graph = graphs.at(0);
   
   TString title = object_name;
   TString name = object_name;
   name.ReplaceAll ("/", "_");
+ 
   TCanvas *c = new TCanvas ("c_" + title, title);
+  TPad *c1;
+  TLine *line;
+  c -> SetRightMargin (0.2);
   c -> cd();
-  auto mg = new TMultiGraph ("mg_" + name, title);
+
+  if (!yRangeSet) 
+    GetRangeY (graphs, yRange, logY);
   
-  for (int i = 0; i < files.size(); i++)
+  for (int i = 0; i < graphs.size(); i++)
   {
-    auto graph = (TGraph*) files [i] -> Get (object_name);
+    auto graph = graphs.at(i);
     if (!graph) continue;
     graph -> SetName (name + Form ("_%d", i));
-    graph -> SetTitle (labels [i]);
+    graph -> SetTitle (labels.at(i));
     
     graph -> SetLineWidth (2);
-    graph -> SetLineColor  (colors [i]);
-    graph -> SetMarkerColor (colors [i]);
+    graph -> SetLineColor  (colors.at(i));
+    graph -> SetMarkerColor (colors.at(i));
     graph -> SetMarkerStyle (markerStyles.at(0).at(i));
     graph -> SetFillColor (0);
-    mg -> Add (graph);
+    TString option;
+    if (i == 0) option = "a" + graphOption;
+    else option = "same " + graphOption;
+    graph -> Draw (option);
   }
           
-  gPad -> SetRightMargin (0.2);
-  mg -> Draw ("apl");
-  if (xRangeSet) mg -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
-  if (yRangeSet) mg -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
-  gPad -> BuildLegend (0.81, 0.0, 1.0, 1.0);
+  if (xRangeSet) graphs.at(0) -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+  graphs.at(0) -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+  gPad -> BuildLegend (0.8011, ratioPadSize, 1.0, 1.0);
   c -> SetLogx (logX);
   c -> SetLogy (logY);
-  if (save_pdf) 
-    c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx"));
-	if (save_png) 
-		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
-  if (save_root)
-	{  
-    output_file -> cd();
-    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  
+  if (plotTitle)
+  {
+    TLatex *text = new TLatex();
+    text -> SetNDC();
+    text -> SetTextSize (0.055);
+    text -> SetTextFont (42); 
+    text -> DrawLatex (0.1, 0.95, title);
   }
 	
   if (plot_ratio)
   {
-    mg -> SetName ("mg_" + name + "_ratio");
-    mg -> SetTitle (title + ": ratio to " + labels [0]);
-    c -> SetName (Form ("%s_ratio", c -> GetName()));
-    c -> SetTitle (Form ("%s: ratio to %s", c -> GetTitle(), labels [0].Data()));
-    for (auto graph : *(mg -> GetListOfGraphs()))
+    c->SetBottomMargin(ratioPadSize);
+    c1 = new TPad (Form ("%s_ratio", c -> GetName()),"",0.,0.,1.,ratioPadSize);
+    c1 -> SetTopMargin(0.);
+    c1 -> SetRightMargin(0.2);
+    c1 -> SetBottomMargin(0.1 / ratioPadSize);
+    c1 -> Draw();
+    TString yAxisTitle = "ratio";
+    c1->cd();
+    for (uint i = 1; i < graphs.size(); i++)
     {
-      if (! DivideGraphs ((TGraph*) graph, ref_graph))
-        break;
+      TGraph *graph;
+      if(graphs.at(i))
+	graph = (TGraph*) graphs.at(i) -> Clone(Form("%s_ratio", graphs.at(i) -> GetName()));
+      if (! DivideGraphs (graph, ref_graph))
+        continue;
+      graph -> SetTitle (Form("%s_ratio", graphs.at(i) -> GetTitle()));
+      rgraphs.push_back(graph);
+      TString option;
+      if (i == 1) option = "a" + graphOption;
+      else option = "same" + graphOption;
+      graph -> Draw (option);
     }
     
-    mg -> SetMinimum (-4.);
-    mg -> SetMaximum (4.);
-    if (save_pdf) 
-      c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx") + "_ratio");
-		if (save_png) 
-			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
-    if (save_root) 
-      c -> Write (((TString)c->GetName()).ReplaceAll ("/", "_"));
-    delete mg;
+    if (!ratioRangeSet) 
+      GetRangeY(rgraphs, ratioRange);
+    
+    TAxis *xAxis = rgraphs.at(0) -> GetXaxis();
+    xAxis -> SetTitleSize(xAxis -> GetTitleSize() / ratioPadSize);
+    xAxis -> SetLabelSize(xAxis -> GetLabelSize() / ratioPadSize);
+    xAxis -> SetTickLength(xAxis -> GetTickLength() / ratioPadSize);
+    if (xRangeSet) xAxis -> SetRangeUser(xRange.at(0), xRange.at(1));
+    
+    TAxis *yAxis = rgraphs.at(0) -> GetYaxis();
+    yAxis -> SetTitle (yAxisTitle);
+    yAxis -> SetTitleSize(yAxis -> GetTitleSize() / ratioPadSize);
+    yAxis -> SetTitleOffset(0.1 / ratioPadSize);
+    yAxis -> SetLabelSize(yAxis -> GetLabelSize() / ratioPadSize);
+    yAxis -> SetRangeUser (ratioRange.at(0), ratioRange.at(1));
+    yAxis -> SetNdivisions (505);
+
+    line = new TLine (xAxis->GetXmin(),1,xAxis->GetXmax(),1);
+    line->SetLineStyle(refLineStyle);
+    line->Draw();
   }
+  
+  if (save_pdf) c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx"));
+  if (save_png) c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_root)
+  {  
+    output_file -> cd();
+    c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
+  }
+  
   delete c;
+  for (auto graph:graphs)
+    delete graph;
+  if (plot_ratio)
+  {
+    for (auto graph:rgraphs)
+      delete graph;
+    delete line;
+  }
 }
+
 
 void PlotTH2 (TString object_name)
 {
@@ -506,8 +642,10 @@ void PlotTH2 (TString object_name)
   text -> SetTextSize(0.055);
   text -> SetTextFont(42);
   vector <TH2*> hists;
-  
-  auto ref_obj = files [0] -> Get (object_name) -> Clone("htemp");
+ 
+  for (auto file:files)
+    hists.push_back((TH2*)file -> Get (object_name));
+  auto ref_obj = hists.at(0) -> Clone("htemp");
   TProfile2D *ref_P2D = nullptr;
   TH2 *ref_hist = nullptr;
   TH2 *hist = nullptr;
@@ -519,7 +657,7 @@ void PlotTH2 (TString object_name)
   }
   else
     ref_hist = dynamic_cast <TH2*> (ref_obj);  
-//  ref_hist -> Sumw2();
+    ref_hist -> Sumw2();
   
   int nEntries = 0;
   float sumMean = 0;
@@ -536,6 +674,11 @@ void PlotTH2 (TString object_name)
   int npads = labels.size();
   int npadsx = int (ceil (sqrt (npads)));
   int npadsy = int (ceil (1. * npads / npadsx));
+  if (npads == 3) 
+  {
+    npadsx = 3;
+    npadsy = 1;
+  }
   c1 -> Divide (npadsx, npadsy);
   
   for (int i = 0; i < files.size(); i++)
@@ -544,14 +687,14 @@ void PlotTH2 (TString object_name)
     gPad -> SetLogz ();
     gPad -> SetLeftMargin (0.15);
     gPad -> SetTopMargin (0.06);
-    gPad -> SetLogx (logX);
-    gPad -> SetLogy (logY);
+    gPad -> SetLogx (logX2d);
+    gPad -> SetLogy (logY2d);
     gPad -> SetLogz (logZ);
 
-    hist = (TH2*) files [i] -> Get (object_name);
+    hist = hists.at(i);
     if (!hist) continue;
     hist -> SetName (name + Form ("_%d", i));
-    hist -> SetTitle (labels [i]);
+    hist -> SetTitle (labels.at(i));
     
     if (!hist -> InheritsFrom ("TProfile2D") && rescale)
     {
@@ -567,7 +710,7 @@ void PlotTH2 (TString object_name)
     sumMean += hist -> GetMean(1) + hist -> GetMean(2) + hist -> GetMean(3); 
     sumError += hist -> GetMeanError(1) + hist -> GetMeanError(2) + hist -> GetMeanError(3); 
     
-    hist -> Draw ("colz");
+    hist -> Draw (th2option);
     if (xRangeSet) hist -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) hist -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
     if (zRangeSet) hist -> GetZaxis() -> SetRangeUser(zRange.at(0), zRange.at(1));
@@ -576,7 +719,7 @@ void PlotTH2 (TString object_name)
     TPaveStats *stats = (TPaveStats*) gPad -> GetPrimitive ("stats");
     if (stats) {
       stats -> SetName (Form ("stats_%d", i));
-      stats -> SetTextColor (colors [i]);
+      stats -> SetTextColor (colors.at(i));
       stats -> SetX1NDC (.7);
       stats -> SetX2NDC (.9);
       stats -> SetY1NDC (.7);
@@ -584,7 +727,6 @@ void PlotTH2 (TString object_name)
       TText *statTitle = stats -> GetLineWith (hist -> GetName());
       statTitle -> SetText (0, 0, hist -> GetTitle());
       hist -> SetStats (0);
-      hists.push_back (hist);
     }
   }
   if (saveEmpty || (!saveEmpty && (nEntries > 0 || sumMean > 0. || sumError > 0.)))
@@ -598,12 +740,13 @@ void PlotTH2 (TString object_name)
       output_file -> cd();
       c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
     }
+	
     if (plot_ratio)
     {
       c -> SetName (Form("%s_ratio", c -> GetName()));
-      c -> SetTitle (Form ("%s: ratio to %s", c -> GetTitle(), labels [0].Data()));
+      c -> SetTitle (Form ("%s: ratio to %s", c -> GetTitle(), labels.at(0).Data()));
       c -> cd();
-  //    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+      text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels.at(0));
       for (int i = 0; i < labels.size(); i++)
       {
         c1 -> cd (i + 1);
@@ -612,7 +755,8 @@ void PlotTH2 (TString object_name)
         if (!hist) continue;
   //      hist -> Sumw2()
         hist -> Divide (ref_hist);
-        hist -> GetZaxis() -> SetRangeUser (0., 4.);
+        if (ratioRangeSet)
+	  hist -> GetZaxis() -> SetRangeUser (ratioRange.at(0), ratioRange.at(1));
       }
       gPad -> Update();
       if (save_pdf) 
@@ -640,7 +784,7 @@ void PlotMultiGraph (TString object_name)
   vector <TMultiGraph*> multiGraphs;
   
   TMultiGraph *mg;
-  auto mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
+  auto mg_ref = (TMultiGraph*) files.at(0) -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
   TString name = object_name;
   name.ReplaceAll ("/", "_");
@@ -667,6 +811,11 @@ void PlotMultiGraph (TString object_name)
   int npads = labels.size();
   int npadsx = int (ceil (sqrt (npads)));
   int npadsy = int (ceil (1. * npads / npadsx));
+  if (npads == 3) 
+  {
+    npadsx = 3;
+    npadsy = 1;
+  }
   c1 -> Divide (npadsx, npadsy);
   
   for (int i = 0; i < files.size(); i++)
@@ -678,21 +827,21 @@ void PlotMultiGraph (TString object_name)
     gPad -> SetLogx (logX);
     gPad -> SetLogy (logY);
 
-    mg = (TMultiGraph*) files [i] -> Get (object_name);
+    mg = (TMultiGraph*) files.at(i) -> Get (object_name);
     if (!mg) continue;
-    mg -> Draw ("apl");
+    mg -> Draw (multiGraphOption);
     TString xAxisTitle = mg -> GetHistogram() -> GetXaxis() -> GetTitle();
     TString yAxisTitle = mg -> GetHistogram() -> GetYaxis() -> GetTitle();
     if (xRangeSet) mg -> /*GetHistogram() -> */GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) mg -> /*GetHistogram() -> */GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
-    mg -> SetTitle (labels [i]);
+    mg -> SetTitle (labels.at(i));
     gPad -> Update();
     TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
     if (p) 
     {
       p -> Clear();
       p -> InsertLine ();
-      p -> InsertText (labels [i]);
+      p -> InsertText (labels.at(i));
       p -> SetTextSize (0.05);
     }
     mg -> SetName (name + Form ("_%d", i));
@@ -703,8 +852,8 @@ void PlotMultiGraph (TString object_name)
   
   if (save_pdf)
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx"));
-	if (save_png)
-		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_png)
+    c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
   if (save_root)
   { 
     output_file -> cd();
@@ -714,7 +863,7 @@ void PlotMultiGraph (TString object_name)
   {
     c -> SetName (Form("%s_ratio", c -> GetName()));
     c -> cd();
-    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels.at(0));
     for (int i = 0; i < labels.size(); i++)
     {
       c1 -> cd (i + 1);
@@ -722,11 +871,15 @@ void PlotMultiGraph (TString object_name)
       if (!mg) continue;
       if (! DivideMultiGraphs (mg, mg_ref)) 
         break;
+      gPad->SetLogy(0);
+      TLine line (mg->GetXaxis()->GetXmin(),1,mg->GetXaxis()->GetXmax(),1);
+      line.SetLineStyle(refLineStyle);
+      line.Draw();
     }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
-		if (save_png) 
-			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+    if (save_png) 
+      c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
     if (save_root)
       c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
@@ -741,100 +894,138 @@ void PlotMultiGraph (TString object_name)
 
 void Plot2MultiGraphs (TString object_name)
 {
-  TLatex *text = new TLatex();
-  text -> SetNDC();
-  text -> SetTextSize (0.055);
-  text -> SetTextFont (42);
-  
   TString title = object_name;
   TString name = object_name;
   name.ReplaceAll ("/", "_");
-  TMultiGraph *mg;
-  TCanvas *c = new TCanvas ("c_" + title, title);
-  c -> cd();
   cout << object_name << endl;
-  TMultiGraph *mg_ref = (TMultiGraph*) files [0] -> Get (object_name) -> Clone("htemp");
-  mg_ref -> Draw();
-  TString xAxisTitle = mg_ref->GetXaxis()->GetTitle();
-  TString yAxisTitle = mg_ref->GetYaxis()->GetTitle();
-  TMultiGraph *mg_common = new TMultiGraph ("mg_" + name, (TString)mg_ref->GetTitle() + ";" + xAxisTitle + ";" + yAxisTitle);
+
+  gStyle->SetOptTitle(0);
+  vector <TMultiGraph*> mgs(2);
+  vector <TList*> glists(2);
+  vector <TGraph*> graphs, rgraphs;
+  for (int i = 0; i < 2; i++)
+  {
+    mgs.at(i) = (TMultiGraph*) files.at(i) -> Get (object_name);
+    if (mgs.at(i)) glists.at(i) = mgs.at(i) -> GetListOfGraphs();
+  }
   
-  TLegend *leg = new TLegend (0.81,0.,1.,1.);
+  if (glists.at(1) && glists.at(0)->GetSize() != glists.at(1)->GetSize())
+  {
+    cout << "Warning! Different number of graphs in multigraphs!/n";
+    return;
+  }
+
+  TCanvas *c = new TCanvas ("c_" + title, title);
+  TPad *c1;
+  TLine *line;
+  c -> cd();
+  
+  TLegend *leg = new TLegend (0.81,ratioPadSize,1.,1.);
   leg -> SetTextSize (lts);
-  TList *glist = mg_ref -> GetListOfGraphs();
-  for (auto g : *glist)
+  for (auto g : *glists.at(0))
     leg -> AddEntry (g, g -> GetTitle(),"l");
   vector <TH1F> g_fake(2);
   
-  text -> DrawLatex (0.1, 0.95, title);
-  for (int i = 0; i < files.size(); i++)
+  gPad -> SetRightMargin (0.2);
+  for (int i = 0; i < 2; i++)
   {
-    gPad -> SetLeftMargin (0.1);
-    gPad -> SetRightMargin (0.2);
-    gPad -> SetTopMargin (0.1);
-
     g_fake.at(i).SetLineColor(kBlack);
     g_fake.at(i).SetLineStyle(lineStyles.at(i));
     leg -> AddEntry (&g_fake.at(i), labels.at(i), "l");
-
-    mg = (TMultiGraph*) files [i] -> Get (object_name);
-    if (!mg) continue;
-    glist = mg -> GetListOfGraphs ();
+    
+    TList *glist = glists.at(i);
     if (!glist) continue;
     for (int j = 0; j < glist -> GetSize(); j++)
     {
-      TGraphAsymmErrors* g = (TGraphAsymmErrors*) glist -> At(j);
+      TGraph* g = (TGraph*) glist -> At(j);
       g -> SetLineStyle(lineStyles.at(i));
       g -> SetMarkerStyle(markerStyles.at(i).at(j));
-      mg_common -> Add(g,g->GetOption());
+      TString option;
+      if (i == 0 && j == 0) option = "a" + graphOption;
+      else option = "same " + graphOption;
+      g -> Draw (option);
+      graphs.push_back(g);
     }
-//    TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
-//    if (p) 
-//    {
-//      p -> Clear();
-//      p -> InsertLine ();
-//      p -> InsertText (labels [i]);
-//      p -> SetTextSize (0.05);
-//    }
   }
-  mg_common -> Draw ("apl");
   leg -> Draw("same");
-  if (xRangeSet) mg_common -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
-  if (yRangeSet) mg_common -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+  if (!yRangeSet) 
+    GetRangeY (graphs, yRange, logY); 
+  if (xRangeSet) graphs.at(0) -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+  graphs.at(0) -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
   gPad -> SetLogx (logX);
   gPad -> SetLogy (logY);
   
+  if (plotTitle)
+  {
+    TLatex *text = new TLatex();
+    text -> SetNDC();
+    text -> SetTextSize (0.055);
+    text -> SetTextFont (42);
+    text -> DrawLatex (0.1, 0.95, title);
+  }
+
+  if (plot_ratio)
+  {
+    c->SetBottomMargin(ratioPadSize);
+    c1 = new TPad (Form ("%s_ratio", c -> GetName()),"",0.,0.,1.,ratioPadSize);
+    c1 -> SetTopMargin(0.);
+    c1 -> SetRightMargin(0.2);
+    c1 -> SetBottomMargin(0.1 / ratioPadSize);
+    c1 -> Draw();
+    TString yAxisTitle = "ratio";
+    c1->cd();
+    for (int i = 0; i < glists.at(1)->GetSize(); i++)
+    {
+      TString option;
+      TGraph *g = (TGraph*)(glists.at(1)->At(i))->Clone(Form("%s_ratio", glists.at(1)->At(i)->GetName()));
+      TGraph *g_ref = (TGraph*)glists.at(0)->At(i);
+      DivideGraphs (g, g_ref);
+      if (i == 0) option = "a" + graphOption;
+      else option = "same " + graphOption;
+      g -> Draw (option);
+      rgraphs.push_back(g);
+    }
+    if (!ratioRangeSet) 
+      GetRangeY (rgraphs, ratioRange, logY);
+    
+    line = new TLine (rgraphs.at(0)->GetXaxis()->GetXmin(),1,rgraphs.at(0)->GetXaxis()->GetXmax(),1);
+    line->SetLineStyle(refLineStyle);
+    line->Draw();
+    
+    TAxis *xAxis = rgraphs.at(0) -> GetXaxis();
+    xAxis -> SetTitleSize(xAxis -> GetTitleSize() / ratioPadSize);
+    xAxis -> SetLabelSize(xAxis -> GetLabelSize() / ratioPadSize);
+    xAxis -> SetTickLength(xAxis -> GetTickLength() / ratioPadSize);
+    
+    TAxis *yAxis = rgraphs.at(0) -> GetYaxis();
+    yAxis -> SetTitle (yAxisTitle);
+    yAxis -> SetTitleSize(yAxis -> GetTitleSize() / ratioPadSize);
+    yAxis -> SetTitleOffset(0.1 / ratioPadSize);
+    yAxis -> SetLabelSize(yAxis -> GetLabelSize() / ratioPadSize);
+    yAxis -> SetRangeUser (ratioRange.at(0), ratioRange.at(1));
+
+    if (xRangeSet) 
+    { 
+      xAxis -> SetRangeUser(xRange.at(0), xRange.at(1));
+      graphs.at(0) -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
+    }
+  }
   if (save_pdf)
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx"));
-	if (save_png)
-		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_png)
+    c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
   if (save_root)
   { 
     output_file -> cd();
     c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
-  if (plot_ratio)
-  {
-    c -> SetName (Form("%s_ratio", c -> GetName()));
-    c -> cd();
-    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
-    mg = (TMultiGraph*) files [0] -> Get (object_name);
-    if (! mg && ! DivideMultiGraphs (mg, mg_ref))
-    {
-      mg -> Draw ();
-      leg -> Draw("same");
-      if (save_pdf) 
-        c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
-      if (save_png) 
-        c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
-      if (save_root)
-        c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
-    }
-  }
-        
-  //delete mg;
-  //delete mg_ref;
-  //delete mg_common;
+       
+  for (auto g:graphs)
+    delete g;
+  for (auto g:rgraphs)
+    delete g;
+  delete line;
+  delete leg;
   delete c;
 }
 
@@ -847,7 +1038,7 @@ void PlotTHStack (TString object_name)
   vector <THStack*> stacks;
   
   THStack *hs;
-  auto hs_ref = (THStack*) files [0] -> Get (object_name) -> Clone("htemp");
+  auto hs_ref = (THStack*) files.at(0) -> Get (object_name) -> Clone("htemp");
   TString title = object_name;
   TString name = object_name;
   name.ReplaceAll ("/", "_");
@@ -874,6 +1065,11 @@ void PlotTHStack (TString object_name)
   int npads = labels.size();
   int npadsx = int (ceil (sqrt (npads)));
   int npadsy = int (ceil (1. * npads / npadsx));
+  if (npads == 3) 
+  {
+    npadsx = 3;
+    npadsy = 1;
+  }
   c1 -> Divide (npadsx, npadsy);
   
   for (int i = 0; i < files.size(); i++)
@@ -883,22 +1079,22 @@ void PlotTHStack (TString object_name)
     gPad -> SetRightMargin (0.);
     gPad -> SetTopMargin (0.1);
 
-    hs = (THStack*) files [i] -> Get (object_name);
+    hs = (THStack*) files.at(i) -> Get (object_name);
     if (!hs) continue;
-    hs -> Draw ("nostack");    
+    hs -> Draw (thStackOption);    
     TString xAxisTitle = hs -> GetHistogram() -> GetXaxis() -> GetTitle();
 //    TString yAxisTitle = hs -> GetYaxis() -> GetTitle();
-    hs -> SetTitle (labels [i]);
+    hs -> SetTitle (labels.at(i));
     TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
     if (p) 
     {
       p -> Clear();
       p -> InsertLine ();
-      p -> InsertText (labels [i]);
+      p -> InsertText (labels.at(i));
       p -> SetTextSize (0.05);
     }
     hs -> SetName (name + Form ("_%d", i));
-    hs -> GetHistogram() /*-> GetXaxis()*/ -> SetTitle(xAxisTitle);
+    hs -> GetHistogram() -> GetXaxis() -> SetTitle(xAxisTitle);
     if (xRangeSet) hs -> GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) hs -> GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
     gPad -> SetLogx (logX);
@@ -908,8 +1104,8 @@ void PlotTHStack (TString object_name)
   
   if (save_pdf)
     c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex","tx"));
-	if (save_png)
-		c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+  if (save_png)
+    c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
   if (save_root)
   { 
     output_file -> cd();
@@ -919,7 +1115,7 @@ void PlotTHStack (TString object_name)
   {
     c -> SetName (Form("%s_ratio", c -> GetName()));
     c -> cd();
-    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
+    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels.at(0));
     for (int i = 0; i < labels.size(); i++)
     {
       c1 -> cd (i + 1);
@@ -927,11 +1123,15 @@ void PlotTHStack (TString object_name)
       if (!hs) continue;
       if (! DivideTHStacks (hs, hs_ref)) 
         break;
+      gPad->SetLogy(0);
+      TLine line (hs->GetXaxis()->GetXmin(),1,hs->GetXaxis()->GetXmax(),1);
+      line.SetLineStyle(refLineStyle);
+      line.Draw();
     }
     if (save_pdf) 
       c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
-		if (save_png) 
-			c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
+    if (save_png) 
+      c -> Print (outputPath + "/" + title.ReplaceAll ("/", "_") + ".png");
     if (save_root)
       c -> Write(((TString)c->GetName()).ReplaceAll ("/", "_"));
   }
@@ -957,7 +1157,7 @@ void Plot2THStacks (TString object_name)
   THStack *hs;
   TCanvas *c = new TCanvas ("c_" + title, title);
   c -> cd();
-  auto hs_ref = (THStack*) files [0] -> Get (object_name) -> Clone("htemp");
+  auto hs_ref = (THStack*) files.at(0) -> Get (object_name) -> Clone("htemp");
   hs_ref -> Draw();
   TString xAxisTitle = hs_ref->GetXaxis()->GetTitle();
   TString yAxisTitle = hs_ref->GetYaxis()->GetTitle();
@@ -979,7 +1179,7 @@ void Plot2THStacks (TString object_name)
     h_fake.at(i).SetLineStyle(lineStyles.at(i));
     leg -> AddEntry (&h_fake.at(i), labels.at(i), "l");
 
-    hs = (THStack*) files [i] -> Get (object_name);
+    hs = (THStack*) files.at(i) -> Get (object_name);
     if (!hs) continue;
     hslist = hs -> GetHists ();
     for (int j = 0; j < hslist -> GetSize(); j++)
@@ -989,14 +1189,6 @@ void Plot2THStacks (TString object_name)
       h -> SetMarkerStyle(markerStyles.at(i).at(j));
       hs_common -> Add(h,h->GetOption());
     }
-//    TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
-//    if (p) 
-//    {
-//      p -> Clear();
-//      p -> InsertLine ();
-//      p -> InsertText (labels [i]);
-//      p -> SetTextSize (0.05);
-//    }
   }
   hs_common -> Draw ("NOSTACK");
   for (auto h : *hslist)
@@ -1020,12 +1212,16 @@ void Plot2THStacks (TString object_name)
   {
     c -> SetName (Form("%s_ratio", c -> GetName()));
     c -> cd();
-    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels [0]);
-    hs = (THStack*) files [0] -> Get (object_name);
+    text -> DrawLatex(0.1, 0.95, title + ": ratio to " + labels.at(0));
+    hs = (THStack*) files.at(1) -> Get (object_name);
     if (! hs && ! DivideTHStacks (hs, hs_ref))
     {
       hs -> Draw ("NOSTACK");
       leg -> Draw("same");
+      gPad->SetLogy(0);
+      TLine line (hs->GetXaxis()->GetXmin(),1,hs->GetXaxis()->GetXmax(),1);
+      line.SetLineStyle(refLineStyle);
+      line.Draw();
       if (save_pdf) 
         c -> Print (outputPathPdf, "Title:" + title.ReplaceAll ("tex", "tx") + "_ratio");
       if (save_png) 
@@ -1082,20 +1278,22 @@ bool DivideMultiGraphs (TMultiGraph* mg, TMultiGraph *mg_ref)
 {
   auto glist = mg -> GetListOfGraphs ();
   auto glist_ref = mg_ref -> GetListOfGraphs ();
-  
+ 
+  if (!glist || !glist_ref)  
+  {
+    cout << "Error while dividing multigraphs: empty list of graphs!";
+    return false;
+  }
+
   if (glist -> GetSize() != glist_ref -> GetSize())
   {
-    cout << "Error while dividing multigraphs: different number of graphs!";
-    return false;
+    cout << "Warning in DivideMultiGraphs: different number of graphs!";
   }
   
   int nGraphs = glist -> GetSize();
   for (int i = 0; i < nGraphs; i++)
     if (! DivideGraphs ((TGraphErrors*) glist -> At (i), (TGraphErrors*) glist_ref -> At (i)))
-      return false;
-  
-  mg -> SetMinimum (-4.);
-  mg -> SetMaximum (4.);
+      glist->At(i)->Delete();
   
   return true;
 }
@@ -1139,4 +1337,65 @@ void FilterObjectList() {
   swap(objectsFiltered, object_names);
 
   return;
+}
+
+
+void GetRangeY (vector <TH1*> hists, vector <float> &range, bool logY)
+{
+  range.resize(2);
+  range.at(0) = numeric_limits<float>::max();
+  range.at(1) = numeric_limits<float>::min();
+
+  for (auto hist:hists) 
+  {
+    if (!hist) continue;
+    int minBin = hist->GetMinimumBin(); 
+    int maxBin = hist->GetMaximumBin();
+    float min = hist->GetBinContent(minBin) - hist->GetBinError(minBin);
+    float max = hist->GetBinContent(maxBin) + hist->GetBinError(maxBin);
+    if (min < range.at(0))
+      range.at(0) = min;
+    if (max > range.at(1))
+      range.at(1) = max;
+  }
+  float sup = 0.05 * (range.at(1) - range.at(0));
+  if (range.at(0) != 0.) range.at(0) -= sup;
+  range.at(1) += sup;
+  if (logY) range.at(0) = 1.;
+}
+
+
+void GetRangeY (vector <TGraph*> graphs, vector <float> &range, bool logY)
+{
+  range.resize(2);
+  range.at(0) = numeric_limits<float>::max();
+  range.at(1) = numeric_limits<float>::min();
+
+  for (auto graph:graphs) 
+  {
+    if (!graph) continue;
+    int n = graph->GetN();
+    double *y = graph->GetY();
+    float errHigh, errLow;
+    double *minY = min_element(y, y+n);
+    double *maxY = max_element(y, y+n);
+    int minBin = distance (y, minY); 
+    int maxBin = distance (y, maxY);
+    TString className = graph->ClassName(); 
+    if ( className.Contains ("Errors"))
+    {
+      errLow = graph->GetErrorYlow(minBin);
+      errHigh = graph->GetErrorYhigh(maxBin);
+    }
+    float min = *minY - errLow;
+    float max = *maxY + errHigh;
+    if (min < range.at(0))
+      range.at(0) = min;
+    if (max > range.at(1))
+      range.at(1) = max;
+  }
+  float sup = 0.05 * (range.at(1) - range.at(0));
+  if (range.at(0) != 0.) range.at(0) -= sup;
+  range.at(1) += sup;
+  if (logY) range.at(0) = 1.;
 }
