@@ -111,6 +111,7 @@ int main (int argc, char* argv[])
 {
   gErrorIgnoreLevel = 2000;
   gStyle  -> SetOptStat (111111);
+  gStyle -> SetOptFit (1);
 //  gStyle -> SetTitleAlign (33);
   gStyle -> SetLegendBorderSize (0);
   gStyle -> SetLegendTextSize (lts);
@@ -830,12 +831,18 @@ void PlotMultiGraph (TString object_name)
     mg = (TMultiGraph*) files.at(i) -> Get (object_name);
     if (!mg) continue;
     mg -> Draw (multiGraphOption);
-    TString xAxisTitle = mg -> GetHistogram() -> GetXaxis() -> GetTitle();
-    TString yAxisTitle = mg -> GetHistogram() -> GetYaxis() -> GetTitle();
+    gPad->Modified(); gPad->Update();
+    TString xAxisTitle = mg/* -> GetHistogram()*/ -> GetXaxis() -> GetTitle();
+    TString yAxisTitle = mg/* -> GetHistogram()*/ -> GetYaxis() -> GetTitle();
     if (xRangeSet) mg -> /*GetHistogram() -> */GetXaxis() -> SetRangeUser(xRange.at(0), xRange.at(1));
     if (yRangeSet) mg -> /*GetHistogram() -> */GetYaxis() -> SetRangeUser(yRange.at(0), yRange.at(1));
+    //if (xRangeSet) mg -> GetXaxis() -> SetLimits(xRange.at(0), xRange.at(1));
+    //mg->SetMinimum(yRange.at(0));
+    //mg->SetMaximum(yRange.at(1))
     mg -> SetTitle (labels.at(i));
-    gPad -> Update();
+    mg -> /*GetHistogram() -> */GetXaxis() -> SetTitle(xAxisTitle);
+    mg -> /*GetHistogram() -> */GetYaxis() -> SetTitle(yAxisTitle);
+    gPad->Modified(); gPad->Update();
     TPaveText *p = (TPaveText*) gPad -> FindObject ("title");
     if (p) 
     {
@@ -845,8 +852,6 @@ void PlotMultiGraph (TString object_name)
       p -> SetTextSize (0.05);
     }
     mg -> SetName (name + Form ("_%d", i));
-    mg -> /*GetHistogram() -> */GetXaxis() -> SetTitle(xAxisTitle);
-    mg -> /*GetHistogram() -> */GetYaxis() -> SetTitle(yAxisTitle);
     multiGraphs.push_back (mg);
   }
   
