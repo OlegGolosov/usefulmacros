@@ -1029,7 +1029,6 @@ void Plot2MultiGraphs (TString object_name)
     delete g;
   for (auto g:rgraphs)
     delete g;
-  delete line;
   delete leg;
   delete c;
 }
